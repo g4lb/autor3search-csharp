@@ -5,7 +5,7 @@ namespace Autor3Search.Core.Bench;
 ///
 /// One round contributes one value per benchmark per unit. The cross-round comparison
 /// that later tasks build on top of this is where the interleaved A/B design earns its
-/// keep.
+/// keep. See <see cref="Stats"/> for comparing two <see cref="BenchSet"/> instances.
 /// </summary>
 public sealed class BenchSet
 {
