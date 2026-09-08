@@ -19,14 +19,19 @@ public static class ProgramTemplate
             .Replace("{{BENCHMARK_PROJECT}}", benchmarkProject, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The exact manifest resource name, not a suffix match: a future embedded resource
+    /// whose name also ends in "program.md" must never be picked up by mistake — this
+    /// file is a control program, and the wrong one is a bad outcome.
+    /// </summary>
+    private const string ResourceName = "Autor3Search.Core.Templates.program.md";
+
     private static string ReadEmbedded()
     {
         var assembly = Assembly.GetExecutingAssembly();
-        var name = assembly.GetManifestResourceNames()
-                       .FirstOrDefault(n => n.EndsWith("program.md", StringComparison.Ordinal))
-                   ?? throw new InvalidOperationException("program.md is not embedded in the assembly");
+        using var stream = assembly.GetManifestResourceStream(ResourceName)
+            ?? throw new InvalidOperationException($"{ResourceName} is not embedded in the assembly");
 
-        using var stream = assembly.GetManifestResourceStream(name)!;
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
     }

@@ -52,6 +52,13 @@ public sealed class InitCommandTests : IDisposable
             """);
     }
 
+    private void WriteFile(string rel, string content)
+    {
+        var abs = Path.Combine(_repo, rel.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(abs)!);
+        File.WriteAllText(abs, content);
+    }
+
     private async Task<(int Code, string Out, string Err)> RunInit(params string[] extra)
     {
         var argv = new List<string> { "init", "-C", _repo };
@@ -189,5 +196,74 @@ public sealed class InitCommandTests : IDisposable
 
         Assert.Contains("Demo.Benchmarks.WordCountBench.CountWords", output);
         Assert.Contains("Demo.Tests", output);
+    }
+
+    // A source project sitting at the repository root has no directory of its own to
+    // scope to, so the only correct pattern is "**" — but that also matches the
+    // frozen test/benchmark directories and .autor3search/, so it must never be
+    // written silently. The original WriteDemo() fixture puts every project in a
+    // subdirectory, so this layout was previously unexercised.
+    /// <summary>
+    /// A root-level source project forces scope "**", surfaced with a loud warning
+    /// rather than written silently.
+    /// </summary>
+    [Fact]
+    public async Task InitWarnsWhenASourceProjectSitsAtTheRepositoryRoot()
+    {
+        WriteFile("Root.csproj", """<Project Sdk="Microsoft.NET.Sdk"></Project>""");
+        WriteFile("Code.cs", "namespace Root; public static class C { }");
+        WriteFile("tests/Demo.Tests/Demo.Tests.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup><PackageReference Include="xunit" Version="2.9.3" /></ItemGroup>
+            </Project>
+            """);
+        WriteFile("tests/Demo.Tests/CTests.cs", "namespace Demo.Tests; public class T { }");
+        WriteFile("bench/Demo.Benchmarks/Demo.Benchmarks.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup><PackageReference Include="BenchmarkDotNet" Version="0.15.8" /></ItemGroup>
+            </Project>
+            """);
+        WriteFile("bench/Demo.Benchmarks/B.cs", """
+            using BenchmarkDotNet.Attributes;
+            namespace Demo.Benchmarks;
+            public class WordCountBench { [Benchmark] public int CountWords() => 0; }
+            """);
+
+        var (code, output, _) = await RunInit();
+
+        Assert.Equal(0, code);
+        Assert.Contains("WARNING", output);
+        Assert.Contains("repository root", output);
+
+        var cfg = RunConfig.Load(Path.Combine(_repo, ".autor3search", "config.yaml"));
+        Assert.Equal(["**"], cfg.Scope);
+    }
+
+    // When the benchmark project is the ONLY project in the repository, excluding it
+    // (as the tool must) leaves no source project at all. Writing a config whose scope
+    // has nothing to point at would be as silently useless as an empty benchmark list.
+    /// <summary>
+    /// init refuses when the only discovered project is the benchmark project itself,
+    /// since excluding it leaves no source project to optimize.
+    /// </summary>
+    [Fact]
+    public async Task InitRefusesWhenTheOnlyProjectIsTheBenchmarkProject()
+    {
+        WriteFile("bench/OnlyProj/OnlyProj.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup><PackageReference Include="BenchmarkDotNet" Version="0.15.8" /></ItemGroup>
+            </Project>
+            """);
+        WriteFile("bench/OnlyProj/B.cs", """
+            using BenchmarkDotNet.Attributes;
+            namespace OnlyProj;
+            public class OnlyBench { [Benchmark] public int Run() => 0; }
+            """);
+
+        var (code, _, err) = await RunInit();
+
+        Assert.Equal(2, code);
+        Assert.Contains("no source project", err, StringComparison.OrdinalIgnoreCase);
+        Assert.False(File.Exists(Path.Combine(_repo, ".autor3search", "config.yaml")));
     }
 }

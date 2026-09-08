@@ -54,16 +54,38 @@ internal static class InitCommand
 
         if (benchProjects.Count > 1)
         {
+            // Deliberately does NOT suggest editing config.yaml or re-running with -force:
+            // this check fires before any config exists, init never reads an existing one,
+            // and -force would hit this identical check and refuse again.
             stderr.WriteLine(
-                "found more than one BenchmarkDotNet project: " +
-                string.Join(", ", benchProjects.Select(p => p.ProjectPath)) +
-                ". Set benchmark_project in .autor3search/config.yaml to the one to measure, " +
-                "and re-run init with -force once you have removed the others from the scan.");
+                "found more than one BenchmarkDotNet project:\n  " +
+                string.Join("\n  ", benchProjects.Select(p => p.ProjectPath)) +
+                "\n\nThis tool measures one benchmark project per run and cannot guess which " +
+                "one you mean. Either point it at a subtree containing only the project you " +
+                "want measured:\n\n  autor3search-csharp init -C <path to that subtree>\n\n" +
+                "or remove the BenchmarkDotNet package reference from the projects you do not " +
+                "want measured.");
             return 2;
         }
 
         var benchProject = benchProjects[0].ProjectPath;
         var testProjects = projects.Where(p => p.IsTestProject).Select(p => p.ProjectPath).ToList();
+
+        var excluded = new HashSet<string>(testProjects, StringComparer.Ordinal) { benchProject };
+        var sourceProjects = projects.Where(p => !excluded.Contains(p.ProjectPath)).ToList();
+
+        if (sourceProjects.Count == 0)
+        {
+            stderr.WriteLine(
+                "the repository contains no source project outside the test and benchmark " +
+                "projects, so there is nothing for an agent to change. Every discovered " +
+                "project is either the benchmark project (" + benchProject + ")" +
+                (testProjects.Count > 0
+                    ? " or a test project (" + string.Join(", ", testProjects) + ")"
+                    : "") +
+                ". Add a project holding the code you want optimized, and run init again.");
+            return 2;
+        }
 
         var configPath = Path.Combine(repo, Paths.FromSlash(RunConfig.RelativePath));
         if (File.Exists(configPath) && !force)
@@ -74,7 +96,7 @@ internal static class InitCommand
             return 2;
         }
 
-        var sourceScope = InferScope(projects, benchProject, testProjects);
+        var (sourceScope, scopeWarning) = InferScope(sourceProjects);
 
         Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
         File.WriteAllText(configPath, RenderConfig(benchmarks.Select(b => b.FullName).ToList(),
@@ -98,6 +120,12 @@ internal static class InitCommand
         stdout.WriteLine("      autor3search-csharp doctor");
         stdout.WriteLine("      autor3search-csharp baseline -tag <today>");
 
+        if (scopeWarning is not null)
+        {
+            stdout.WriteLine();
+            stdout.WriteLine("WARNING: " + scopeWarning);
+        }
+
         if (testProjects.Count == 0)
         {
             stdout.WriteLine();
@@ -111,26 +139,42 @@ internal static class InitCommand
     }
 
     /// <summary>
-    /// The directories holding projects that are neither test nor benchmark projects.
-    /// Everything else is frozen, so scoping to source is both correct and the least
-    /// surprising default.
+    /// The scope glob patterns for the given non-excluded (non-test, non-benchmark)
+    /// source projects, plus a warning to surface when the inferred scope is wider
+    /// than a directory-scoped default — everything else is frozen, so scoping to
+    /// source directories is both correct and the least surprising default.
+    ///
+    /// A project sitting at the repository root (<see cref="DiscoveredProject.Directory"/>
+    /// is empty) cannot be excluded by any directory pattern — its own files live directly
+    /// under the repo root alongside <c>.autor3search/</c>, <c>program.md</c> and every
+    /// frozen project. The only correct scope for that layout is <c>**</c>, but that also
+    /// matches the frozen projects' own directories, so this is called out loudly rather
+    /// than written silently: a scope gate that fails open, with <c>program.md</c> telling
+    /// the agent it is constrained, is exactly the failure this tool exists to prevent.
     /// </summary>
-    private static List<string> InferScope(
-        IReadOnlyList<DiscoveredProject> projects, string benchProject, List<string> testProjects)
+    private static (List<string> Scope, string? Warning) InferScope(
+        IReadOnlyList<DiscoveredProject> sourceProjects)
     {
-        var excluded = new HashSet<string>(testProjects, StringComparer.Ordinal) { benchProject };
+        if (sourceProjects.Any(p => p.Directory.Length == 0))
+        {
+            return (["**"],
+                "the inferred scope is unrestricted (\"**\") because a source project sits at " +
+                "the repository root, so nothing can be excluded by directory. The agent may " +
+                "edit anything not frozen (the test and benchmark projects). If you want the " +
+                "scope narrower, edit scope in .autor3search/config.yaml BY HAND before running " +
+                "baseline — the config is hashed at baseline, and any change made after that " +
+                "fails the run.");
+        }
 
-        var dirs = projects
-            .Where(p => !excluded.Contains(p.ProjectPath))
+        var dirs = sourceProjects
             .Select(p => p.Directory)
-            .Where(d => d.Length > 0)
             .Select(d => d.Split('/')[0])
             .Distinct(StringComparer.Ordinal)
             .OrderBy(d => d, StringComparer.Ordinal)
             .Select(d => $"{d}/**")
             .ToList();
 
-        return dirs.Count > 0 ? dirs : ["**"];
+        return (dirs, null);
     }
 
     private static string RenderConfig(
