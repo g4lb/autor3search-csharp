@@ -18,7 +18,10 @@ public static class Program
                 "eval" => await EvalCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
                 "status" => await StatusCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
                 "stop" => await StopCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
-                "version" => RunVersion(),
+                "report" => await ReportCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
+                "doctor" => await DoctorCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
+                "profile" => await ProfileCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
+                "version" => await VersionCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
                 "" => Usage(),
                 _ => Unknown(parsed.Command),
             };
@@ -47,26 +50,9 @@ public static class Program
         return 2;
     }
 
-    private static int RunVersion()
-    {
-        Console.WriteLine(ThisAssembly.InformationalVersion);
-        return 0;
-    }
-
     private static int Unknown(string command)
     {
         Console.Error.WriteLine($"unknown command: {command}");
         return 2;
     }
-}
-
-/// <summary>Build identity, replaced with real version metadata in Task 20.</summary>
-internal static class ThisAssembly
-{
-    /// <summary>The informational version of the running build.</summary>
-    public static string InformationalVersion =>
-        typeof(Program).Assembly
-            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
-            .Cast<System.Reflection.AssemblyInformationalVersionAttribute>()
-            .FirstOrDefault()?.InformationalVersion ?? "0.0.0-dev";
 }

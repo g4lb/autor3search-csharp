@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Autor3Search.Core;
@@ -130,7 +131,12 @@ internal static partial class EvalCommand
             Reason: outcome.Verdict.Reason,
             Score: outcome.Verdict.Score,
             Message: outcome.Verdict.Message,
-            Version: ThisAssembly.InformationalVersion));
+            // The Task 1 scaffolding class this used to read (ThisAssembly) was removed in
+            // Task 20 in favor of VersionCommand; this reads the same attribute directly so
+            // the version recorded in results.tsv always matches what `version` prints.
+            Version: typeof(EvalCommand).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                ?? "0.0.0-dev"));
 
         if (args.GetFlag("json"))
         {
