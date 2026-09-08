@@ -56,11 +56,15 @@ public sealed class EvalCommandIntegrationTests : IDisposable
     /// un-ignores it under `.autor3search/*`), so an uncommitted edit to it makes the
     /// tree dirty — and <c>baseline</c> correctly refuses a dirty tree. That refusal is
     /// correct production behaviour; the test must satisfy it rather than work around it.
+    /// The commit is skipped when <paramref name="job"/> is <c>"short"</c> — init's own
+    /// default — because the replace is then a genuine no-op and there is nothing to
+    /// commit; committing unconditionally would fail on exactly that case.
     /// </summary>
     private void PinBaseline(string job = "dry", double? minEffectPct = null)
     {
         var configPath = Path.Combine(_repo, ".autor3search", "config.yaml");
-        var config = File.ReadAllText(configPath).Replace("job: short", $"job: {job}");
+        var original = File.ReadAllText(configPath);
+        var config = original.Replace("job: short", $"job: {job}");
 
         if (minEffectPct is { } pct)
         {
@@ -69,9 +73,12 @@ public sealed class EvalCommandIntegrationTests : IDisposable
                 $"min_effect_pct: {pct.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         }
 
-        File.WriteAllText(configPath, config);
-        RunGit(_repo, "add", "-A");
-        RunGit(_repo, "commit", "-q", "-m", "test setup: pin config for baseline");
+        if (config != original)
+        {
+            File.WriteAllText(configPath, config);
+            RunGit(_repo, "add", "-A");
+            RunGit(_repo, "commit", "-q", "-m", "test setup: pin config for baseline");
+        }
 
         var baseline = BaselineCommand.RunAsync(
             Args.Parse(["baseline", "-C", _repo, "-tag", Tag]),
