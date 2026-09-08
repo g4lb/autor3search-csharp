@@ -50,6 +50,24 @@ fish_add_path $HOME/.dotnet/tools              # fish
 setx PATH "%PATH%;%USERPROFILE%\.dotnet\tools" # Windows
 ```
 
+If it is instead found but exits with `You must install .NET to run this
+application`, .NET is installed somewhere the tool's launcher does not look. Homebrew
+puts it under `/opt/homebrew`, and a global tool's launcher only searches
+`/usr/local/share/dotnet`, `DOTNET_ROOT` and `/etc/dotnet/install_location*` — so the
+`dotnet` command works while every global tool fails. Point `DOTNET_ROOT` at it:
+
+```bash
+export DOTNET_ROOT="$(dotnet --list-runtimes | grep -m1 Microsoft.NETCore.App \
+  | sed 's/.*\[\(.*\)\]/\1/; s|/shared/Microsoft.NETCore.App$||')"
+```
+
+It is derived from `--list-runtimes` rather than from the path of the `dotnet` binary
+because those are not the same place: Homebrew keeps the binary in `bin/` and the runtime
+in the sibling `libexec/`, so walking up from the executable lands one directory too high.
+
+This affects every .NET global tool, not this one. The official .NET installer puts the
+runtime where the launcher looks and needs none of this.
+
 Then, in the repository you want made faster:
 
 ```

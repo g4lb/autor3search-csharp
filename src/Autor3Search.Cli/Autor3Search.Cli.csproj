@@ -14,7 +14,15 @@
     <PackageId>autor3search-csharp</PackageId>
     <PackageOutputPath>./nupkg</PackageOutputPath>
     <Description>Autonomous AI-driven performance optimization for any .NET repository.</Description>
+    <PackageProjectUrl>https://github.com/g4lb/autor3search-csharp</PackageProjectUrl>
+    <PackageTags>benchmark;performance;optimization;benchmarkdotnet;agent;ai;cli;dotnet-tool</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Without this the nuget.org page shows only Description. -->
+    <None Include="../../README.md" Pack="true" PackagePath="/" Visible="false" />
+  </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Autor3Search.Cli.Tests" />
