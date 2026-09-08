@@ -16,6 +16,8 @@ public static class Program
                 "init" => await InitCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
                 "baseline" => await BaselineCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
                 "eval" => await EvalCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
+                "status" => await StatusCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
+                "stop" => await StopCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
                 "version" => RunVersion(),
                 "" => Usage(),
                 _ => Unknown(parsed.Command),
