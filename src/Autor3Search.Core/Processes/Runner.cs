@@ -109,22 +109,33 @@ public sealed class Runner(string workingDirectory, TimeSpan timeout, TextWriter
         try
         {
             await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
+
+            // WaitForExitAsync can return before the OutputDataReceived/ErrorDataReceived
+            // events for the process's final output have fired. The parameterless
+            // synchronous WaitForExit() blocks until redirected-stream processing is
+            // drained; the process has already exited, so this returns as soon as the
+            // readers finish.
+            process.WaitForExit();
         }
         catch (OperationCanceledException)
         {
             KillTree(process);
 
             // Give the tree a moment to actually die so its output flushes, then
-            // distinguish "the caller cancelled" from "this phase ran too long".
+            // distinguish "the caller cancelled" from "this phase ran too long". Drain
+            // via the synchronous WaitForExit() (see above) so the tail is not lost,
+            // but keep the wait BOUNDED: a descendant could still be holding the pipe
+            // open, and this is the one path that exists for when things have already
+            // gone wrong.
             try
             {
-                await process.WaitForExitAsync(CancellationToken.None)
-                    .WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None)
+                await Task.Run(process.WaitForExit).WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None)
                     .ConfigureAwait(false);
             }
             catch (TimeoutException)
             {
-                // Nothing further to do; the tree kill was already issued.
+                // The tree kill was already issued; a descendant is still holding the
+                // pipe open. Return what was captured rather than hanging the harness.
             }
 
             if (ct.IsCancellationRequested) throw;
@@ -153,6 +164,17 @@ public sealed class Runner(string workingDirectory, TimeSpan timeout, TextWriter
         {
             // Documented for remote processes; unreachable here, but never let a
             // teardown path throw over the real result.
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // A descendant could not be terminated (permissions, or it is already
+            // terminating). Nothing further to do, and the real result must survive.
+        }
+        catch (AggregateException)
+        {
+            // Kill(entireProcessTree: true) reports this when not every descendant in
+            // the tree could be terminated. Whatever died, died; whatever did not is
+            // not something a teardown path can fix by throwing.
         }
     }
 }
