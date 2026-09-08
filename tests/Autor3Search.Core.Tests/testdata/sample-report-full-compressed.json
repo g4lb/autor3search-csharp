@@ -1,0 +1,39 @@
+{
+  "Title": "WordCountBench-20260908-111032",
+  "HostEnvironmentInfo": { "BenchmarkDotNetVersion": "0.15.8" },
+  "Benchmarks": [
+    {
+      "Namespace": null,
+      "Type": "WordCountBench",
+      "Method": "CountWords",
+      "MethodTitle": "CountWords",
+      "Parameters": "",
+      "FullName": "WordCountBench.CountWords",
+      "Statistics": {
+        "N": 3,
+        "Min": 56800.1,
+        "Median": 57614.729583740234,
+        "Mean": 57340.2858581543,
+        "Max": 57900.4,
+        "StandardDeviation": 1099.2
+      },
+      "Memory": {
+        "Gen0Collections": 568,
+        "Gen1Collections": 116,
+        "Gen2Collections": 0,
+        "TotalOperations": 16384,
+        "BytesAllocatedPerOperation": 290568
+      }
+    },
+    {
+      "Namespace": "Demo",
+      "Type": "SplitBench",
+      "Method": "Split",
+      "MethodTitle": "Split",
+      "Parameters": "Size=1024",
+      "FullName": "Demo.SplitBench.Split(Size=1024)",
+      "Statistics": { "N": 3, "Median": 1200.0, "Mean": 1234.5 },
+      "Memory": { "BytesAllocatedPerOperation": 4096 }
+    }
+  ]
+}

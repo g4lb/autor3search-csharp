@@ -21,4 +21,8 @@
     <ProjectReference Include="..\..\src\Autor3Search.Core\Autor3Search.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="testdata/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
