@@ -17,12 +17,8 @@ public sealed class InitCommandTests : IDisposable
         Directory.CreateDirectory(_repo);
     }
 
-    /// <summary>Removes the temporary repository root.</summary>
-    public void Dispose()
-    {
-        try { if (Directory.Exists(_repo)) Directory.Delete(_repo, true); }
-        catch (IOException) { }
-    }
+    /// <summary>Removes the temporary repository root, tolerating leftover read-only git objects.</summary>
+    public void Dispose() => TestRepo.DeleteTree(_repo);
 
     private void WriteDemo()
     {
@@ -151,7 +147,13 @@ public sealed class InitCommandTests : IDisposable
         await RunInit();
         Git("add", "-A");
 
-        var tracked = GitOutput("ls-files").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        // git emits CRLF-terminated lines on Windows; an untrimmed split leaves a
+        // trailing '\r' on every entry, so equality comparisons against it silently
+        // fail there while passing on Linux/macOS. Trim, per Git.ChangedSinceAsync.
+        var tracked = GitOutput("ls-files")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .ToArray();
 
         Assert.Contains(".autor3search/config.yaml", tracked);
         Assert.DoesNotContain(tracked, f => f.StartsWith(".autor3search/") && f != ".autor3search/config.yaml");
