@@ -4,6 +4,7 @@ using Xunit;
 namespace Autor3Search.Core.Tests;
 
 /// <summary>Tests for path normalization and state home resolution.</summary>
+[Collection("StateHomeEnv")]
 public class PathsTests
 {
     /// <summary>Verifies that ToSlash converts backslashes to forward slashes.</summary>

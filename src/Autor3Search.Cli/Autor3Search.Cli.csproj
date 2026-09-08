@@ -16,4 +16,8 @@
     <Description>Autonomous AI-driven performance optimization for any .NET repository.</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Autor3Search.Cli.Tests" />
+  </ItemGroup>
+
 </Project>
