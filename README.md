@@ -1,24 +1,36 @@
 # autor3search-c#
 
-[![ci](https://github.com/g4lb/autor3search-csharp/actions/workflows/ci.yml/badge.svg)](https://github.com/g4lb/autor3search-csharp/actions/workflows/ci.yml)
+[![ci](https://github.com/g4lb/autor3search-csharp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/g4lb/autor3search-csharp/actions/workflows/ci.yml?query=branch%3Amain)
+[![nuget](https://img.shields.io/nuget/v/autor3search-csharp?label=nuget)](https://www.nuget.org/packages/autor3search-csharp)
+[![downloads](https://img.shields.io/nuget/dt/autor3search-csharp?label=downloads)](https://www.nuget.org/packages/autor3search-csharp)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-Autonomous AI-driven performance optimization for any .NET repository. A coding agent
-proposes an optimization; a compiled harness the agent cannot reach gates it for
-correctness, measures it against a pinned baseline, and answers **KEEP** or **DISCARD**.
-One commit per accepted change, one row per experiment.
+**Autonomous AI-driven performance optimization for any .NET repository.**
 
-**The display name is `autor3search-c#`. The command is `autor3search-csharp`.** They
-differ on purpose: `#` is illegal in a NuGet package id and in a GitHub repository name,
-and it starts a comment in `fish`, `zsh` and `bash` — an agent pasting
-`autor3search-c# eval` would run `autor3search-c` and silently drop the rest of the line.
-So the `#` appears only in prose. Every command, package id, branch name, environment
-variable and path in this document uses `autor3search-csharp`.
+Point your coding agent at your repo and go to sleep. It proposes an optimization, runs
+it through a frozen measurement harness, and the harness decides: **KEEP** or
+**DISCARD**. You wake up to a log of experiments and faster code.
 
-This is a port of [autor3search-go](https://github.com/g4lb/autor3search-go). The
-measurement discipline, the anti-cheat gates and the scoring rule are carried over
-unchanged. Where the .NET toolchain forces a real difference, [Limitations](#limitations)
-says so.
+Inspired by [karpathy/autoresearch](https://github.com/karpathy/autoresearch), which does
+this for a single-GPU LLM training loop, by way of
+[autor3search-go](https://github.com/g4lb/autor3search-go). This does it for .NET — where
+the metric comes from BenchmarkDotNet instead of `go test -bench`, and where
+**correctness is not optional**.
 
+> **Status: early but working.** The [worked example](#worked-example) below is a real
+> run: a quadratic string concatenation replaced with a `StringBuilder`, measured at
+> **−25.9 %** with allocation halved and `p = 1.08e-05`, verdict **KEEP**. Every number
+> in this README is a real measurement, never an illustration.
+>
+> **The display name is `autor3search-c#`; the command is `autor3search-csharp`.** `#` is
+> illegal in a NuGet package id and starts a comment in most shells — an agent pasting
+> `autor3search-c# eval` would run `autor3search-c` and silently drop the rest of the
+> line. So `#` appears only in prose; every command, path and identifier here uses
+> `autor3search-csharp`.
+>
+> The measurement discipline, anti-cheat gates and scoring rule are carried over from the
+> Go original unchanged. Where the .NET toolchain forces a real difference,
+> [Limitations](#limitations) says so.
 ---
 
 ## Start here
