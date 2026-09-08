@@ -83,11 +83,15 @@ public class DemoFixtureTests
     // The fixture must not inherit the harness's own build settings. Without its own
     // Directory.Build.props the MSBuild walk reaches the repository root and applies
     // TreatWarningsAsErrors to a fixture whose job is to be an ordinary consumer repo.
-    /// <summary>The fixture's own Directory.Build.props exists, stopping the MSBuild walk.</summary>
+    // MSBuild looks up .props and .targets independently, each stopping at the first one
+    // found walking up, so both files must be present or a future root-level
+    // Directory.Build.targets would leak into the fixture undetected.
+    /// <summary>The fixture's own Directory.Build.props and .targets exist, stopping the MSBuild walk.</summary>
     [Fact]
     public void TheFixtureStopsTheDirectoryBuildPropsWalk()
     {
         Assert.True(File.Exists(Path.Combine(DemoFixture.SourcePath, "Directory.Build.props")));
+        Assert.True(File.Exists(Path.Combine(DemoFixture.SourcePath, "Directory.Build.targets")));
     }
 
     /// <summary>CopyTo reproduces the source files, including Directory.Build.props, without bin/obj.</summary>

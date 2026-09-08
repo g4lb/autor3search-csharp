@@ -1,0 +1,12 @@
+<Project>
+  <!--
+    Deliberately empty, and deliberately present — the companion to Directory.Build.props
+    in this directory.
+
+    MSBuild searches for Directory.Build.props and Directory.Build.targets INDEPENDENTLY,
+    each stopping at the first one it finds walking up. An empty .props therefore does not
+    stop a .targets search, so without this file a Directory.Build.targets added at the
+    repository root would silently reach the fixture and stop it being the plain, ordinary
+    consumer repository it exists to be.
+  -->
+</Project>
