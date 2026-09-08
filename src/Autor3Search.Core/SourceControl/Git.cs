@@ -26,7 +26,17 @@ public static class Git
         return r.Stdout.Trim();
     }
 
-    /// <summary>The repository root containing <paramref name="startDir"/>.</summary>
+    /// <summary>
+    /// The repository root containing <paramref name="startDir"/>.
+    ///
+    /// The returned path is git's own canonical, symlink-resolved form (from
+    /// <c>rev-parse --show-toplevel</c>), which need not equal <paramref name="startDir"/>
+    /// or any prefix of it byte-for-byte — on macOS, for instance, a temp directory
+    /// under /var resolves through /private/var. Callers that derive further paths or
+    /// cache keys (see <see cref="Paths.RepoHash"/>) from the repository root must use
+    /// THIS RETURN VALUE, not the path they originally passed in, or the same
+    /// repository can end up addressed under two different keys.
+    /// </summary>
     public static async Task<string> RootAsync(string startDir, CancellationToken ct)
     {
         var r = await RunAsync(startDir, ct, "rev-parse", "--show-toplevel").ConfigureAwait(false);

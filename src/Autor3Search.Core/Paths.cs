@@ -83,10 +83,22 @@ public static class Paths
     /// A short, stable key for a repository, so two repositories on one machine
     /// never share run state. Derived from the full path rather than the directory
     /// name, which collides constantly.
+    ///
+    /// The path is canonicalised (symlinks resolved) before hashing WHEN IT EXISTS
+    /// on disk. Without this, the same repository reachable through two spellings —
+    /// for example macOS's temp directory, where /var is itself a symlink to
+    /// /private/var — would hash to two different keys and address two different
+    /// state directories. A run whose baseline was recorded under one spelling and
+    /// whose eval arrives under the other would silently miss its baseline, its
+    /// frozen manifest, and its pinned worktree, and report a bare "no baseline
+    /// recorded" instead of anything diagnostic. A path that does not exist (as in
+    /// several tests, and possibly a repository not yet checked out) falls back to
+    /// its literal spelling — there is nothing on disk to resolve.
     /// </summary>
     public static string RepoHash(string repoRoot)
     {
-        var normalized = ToSlash(Path.TrimEndingDirectorySeparator(repoRoot));
+        var canonical = CanonicalizeIfExists(repoRoot);
+        var normalized = ToSlash(Path.TrimEndingDirectorySeparator(canonical));
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(normalized));
         return Convert.ToHexStringLower(bytes)[..8];
     }
@@ -94,4 +106,97 @@ public static class Paths
     /// <summary>The state directory for one repository and one run tag.</summary>
     public static string StateDir(string repoRoot, string tag) =>
         Path.Combine(StateHome(), RepoHash(repoRoot), tag);
+
+    /// <summary>
+    /// Resolves <paramref name="path"/> to its real, symlink-free form when it exists
+    /// on disk; returns it unchanged otherwise. Falls back to the input on any I/O or
+    /// permission failure — a filesystem hiccup while computing a cache key must never
+    /// crash the tool.
+    /// </summary>
+    private static string CanonicalizeIfExists(string path)
+    {
+        if (!Directory.Exists(path)) return path;
+
+        try
+        {
+            return ResolveRealPath(Path.GetFullPath(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return path;
+        }
+    }
+
+    private static readonly char[] SeparatorChars =
+        [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar];
+
+    /// <summary>
+    /// A minimal <c>realpath(3)</c>: resolves every symlink in <paramref name="fullPath"/>,
+    /// including one sitting in an ANCESTOR directory rather than at the leaf — .NET's
+    /// <see cref="FileSystemInfo.LinkTarget"/> only resolves a path that IS itself a
+    /// link, so a plain leaf-level resolve would miss exactly the macOS /var case this
+    /// exists for. Segments are processed from a work queue rather than a single
+    /// left-to-right pass because a symlink's OWN target can reintroduce further
+    /// unresolved segments — including further ancestor symlinks — that must be
+    /// re-walked from wherever they land, not appended past as if already resolved.
+    /// </summary>
+    private static string ResolveRealPath(string fullPath)
+    {
+        var root = Path.GetPathRoot(fullPath) ?? string.Empty;
+        var resolvedRoot = root.Length > 0 ? root.TrimEnd(SeparatorChars) : string.Empty;
+        if (resolvedRoot.Length == 0 && Path.DirectorySeparatorChar == '/') resolvedRoot = "/";
+
+        var resolved = resolvedRoot;
+        var remaining = new List<string>(
+            fullPath[root.Length..].Split(SeparatorChars, StringSplitOptions.RemoveEmptyEntries));
+
+        var hops = 0;
+        while (remaining.Count > 0)
+        {
+            // A pathological symlink cycle must not hang the tool; give up and return
+            // whatever is resolved so far rather than loop forever.
+            if (++hops > 200) break;
+
+            var segment = remaining[0];
+            remaining.RemoveAt(0);
+
+            if (segment.Length == 0 || segment == ".") continue;
+            if (segment == "..")
+            {
+                if (resolved.Length > resolvedRoot.Length)
+                {
+                    var cut = resolved.LastIndexOfAny(SeparatorChars);
+                    resolved = cut > resolvedRoot.Length ? resolved[..cut] : resolvedRoot;
+                }
+                continue;
+            }
+
+            var candidate = resolved.Length == 0 ? segment : Path.Combine(resolved, segment);
+            var target = Directory.Exists(candidate)
+                ? new DirectoryInfo(candidate).LinkTarget
+                : File.Exists(candidate) ? new FileInfo(candidate).LinkTarget : null;
+
+            if (target is null)
+            {
+                resolved = candidate;
+                continue;
+            }
+
+            if (Path.IsPathFullyQualified(target))
+            {
+                var targetRoot = Path.GetPathRoot(target) ?? string.Empty;
+                resolved = targetRoot.Length > 0 ? targetRoot.TrimEnd(SeparatorChars) : string.Empty;
+                if (resolved.Length == 0 && Path.DirectorySeparatorChar == '/') resolved = "/";
+                remaining.InsertRange(0, target[targetRoot.Length..].Split(SeparatorChars, StringSplitOptions.RemoveEmptyEntries));
+            }
+            else
+            {
+                // Relative target: resolved (the symlink's own directory) stays put,
+                // and the target's segments are re-walked from there.
+                remaining.InsertRange(0, target.Split(SeparatorChars, StringSplitOptions.RemoveEmptyEntries));
+            }
+        }
+
+        return resolved;
+    }
 }

@@ -116,4 +116,58 @@ public class PathsTests
         var dir = Paths.StateDir("/home/u/proj", "sep8");
         Assert.EndsWith(Path.Combine(Paths.RepoHash("/home/u/proj"), "sep8"), dir);
     }
+
+    /// <summary>
+    /// A real directory and a symlink pointing at it must hash identically — otherwise
+    /// the same repository, reached through two spellings (as macOS's own temp
+    /// directory is, via /var → /private/var), would silently key two different state
+    /// directories and a run could lose its baseline mid-flight.
+    /// </summary>
+    [Fact]
+    public void RepoHashIsIdenticalThroughASymlink()
+    {
+        if (!SymlinkSupported()) return;
+
+        var real = Path.Combine(Path.GetTempPath(), $"a3s-repohash-real-{Guid.NewGuid():N}");
+        var link = Path.Combine(Path.GetTempPath(), $"a3s-repohash-link-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(real);
+        try
+        {
+            Directory.CreateSymbolicLink(link, real);
+            Assert.Equal(Paths.RepoHash(real), Paths.RepoHash(link));
+        }
+        finally
+        {
+            if (Directory.Exists(link)) Directory.Delete(link);
+            if (Directory.Exists(real)) Directory.Delete(real, true);
+        }
+    }
+
+    /// <summary>
+    /// Probes whether this platform/process can create symbolic links. On Windows CI,
+    /// <see cref="Directory.CreateSymbolicLink(string, string)"/> needs Developer Mode
+    /// or elevation and throws <see cref="UnauthorizedAccessException"/> otherwise;
+    /// Linux and macOS runners always support it.
+    /// </summary>
+    private static bool SymlinkSupported()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"a3s-repohash-probe-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var target = Path.Combine(dir, "target.txt");
+            File.WriteAllBytes(target, "x"u8.ToArray());
+            var link = Path.Combine(dir, "link.txt");
+            File.CreateSymbolicLink(link, target);
+            return true;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            return false;
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
 }
