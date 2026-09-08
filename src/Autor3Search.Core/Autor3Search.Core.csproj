@@ -15,4 +15,8 @@
     <InternalsVisibleTo Include="Autor3Search.Core.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Templates/program.md" />
+  </ItemGroup>
+
 </Project>
