@@ -38,14 +38,41 @@ public static class Doctor
     {
         return
         [
-            DiskSpace(repo),
-            CpuCount(),
-            OperatingSystemCheck(),
-            await DotnetSdkAsync(repo, ct).ConfigureAwait(false),
-            await LoadAverageAsync(ct).ConfigureAwait(false),
-            await CpuScalingAsync(ct).ConfigureAwait(false),
-            await PowerSourceAsync(ct).ConfigureAwait(false),
+            await SafeAsync("disk space", () => Task.FromResult(DiskSpace(repo))).ConfigureAwait(false),
+            await SafeAsync("cpu count", () => Task.FromResult(CpuCount())).ConfigureAwait(false),
+            await SafeAsync("operating system", () => Task.FromResult(OperatingSystemCheck())).ConfigureAwait(false),
+            await SafeAsync(".NET SDK", () => DotnetSdkAsync(repo, ct)).ConfigureAwait(false),
+            await SafeAsync("load average", () => LoadAverageAsync(ct)).ConfigureAwait(false),
+            await SafeAsync("cpu frequency scaling", () => CpuScalingAsync(ct)).ConfigureAwait(false),
+            await SafeAsync("power source", () => PowerSourceAsync(ct)).ConfigureAwait(false),
         ];
+    }
+
+    /// <summary>
+    /// Runs one check, converting any escaping exception into an Unavailable result.
+    ///
+    /// `doctor` is informational and must ALWAYS exit 0 — it reports on the machine, it
+    /// never decides whether a run may proceed. Leaving that guarantee to each check's
+    /// own error handling means one forgotten catch turns a diagnostic command into a
+    /// failure. This makes the contract structural.
+    ///
+    /// Deliberately does not catch <see cref="OperationCanceledException"/>: a caller
+    /// cancelling the doctor run should still cancel, not come back as a check result.
+    /// </summary>
+    private static async Task<Check> SafeAsync(string name, Func<Task<Check>> check)
+    {
+        try
+        {
+            return await check().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new Check(name, CheckStatus.Unavailable, $"check failed: {ex.Message}");
+        }
     }
 
     private static Check DiskSpace(string repo)
@@ -137,7 +164,8 @@ public static class Doctor
                     "sharing it with other work measures the other work too")
                 : new Check("load average", CheckStatus.Ok, $"{one:F2}");
         }
-        catch (Exception ex) when (ex is IOException or FormatException or IndexOutOfRangeException)
+        catch (Exception ex) when (ex is IOException or FormatException or IndexOutOfRangeException
+            or InvalidOperationException)
         {
             return new Check("load average", CheckStatus.Unavailable, $"could not read: {ex.Message}");
         }
@@ -148,21 +176,33 @@ public static class Doctor
         if (OperatingSystem.IsLinux())
         {
             const string path = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor";
-            if (!File.Exists(path))
+
+            try
             {
-                return new Check("cpu frequency scaling", CheckStatus.Unavailable,
-                    "no cpufreq governor exposed — common in containers and VMs, where the host " +
-                    "controls frequency and you cannot see or influence it");
+                if (!File.Exists(path))
+                {
+                    return new Check("cpu frequency scaling", CheckStatus.Unavailable,
+                        "no cpufreq governor exposed — common in containers and VMs, where the host " +
+                        "controls frequency and you cannot see or influence it");
+                }
+
+                var governor = (await File.ReadAllTextAsync(path, ct).ConfigureAwait(false)).Trim();
+
+                return governor == "performance"
+                    ? new Check("cpu frequency scaling", CheckStatus.Ok, $"governor: {governor}")
+                    : new Check("cpu frequency scaling", CheckStatus.Warn,
+                        $"governor: {governor} — the CPU changes speed during a run, which lands in " +
+                        "your measurements as though it were your code. Consider: " +
+                        "sudo cpupower frequency-set -g performance");
             }
-
-            var governor = (await File.ReadAllTextAsync(path, ct).ConfigureAwait(false)).Trim();
-
-            return governor == "performance"
-                ? new Check("cpu frequency scaling", CheckStatus.Ok, $"governor: {governor}")
-                : new Check("cpu frequency scaling", CheckStatus.Warn,
-                    $"governor: {governor} — the CPU changes speed during a run, which lands in " +
-                    "your measurements as though it were your code. Consider: " +
-                    "sudo cpupower frequency-set -g performance");
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // TOCTOU: the sysfs pseudo-file can vanish, or be unreadable, between the
+                // File.Exists check above and the read — a container's cpufreq node can
+                // disappear mid-check, or be root-only.
+                return new Check("cpu frequency scaling", CheckStatus.Unavailable,
+                    $"could not read: {ex.Message}");
+            }
         }
 
         if (OperatingSystem.IsMacOS())

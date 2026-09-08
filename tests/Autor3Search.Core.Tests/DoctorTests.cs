@@ -78,4 +78,31 @@ public class DoctorTests
             Assert.False(string.IsNullOrWhiteSpace(c.Detail));
         });
     }
+
+    // doctor is informational and must ALWAYS exit 0: a check that throws must come
+    // back as an Unavailable result, never as an exception that propagates out of
+    // RunAsync — that is what turns a diagnostic command into a failing one. A repo
+    // path holding an embedded NUL is invalid on every platform .NET runs on and is
+    // rejected by Path.GetFullPath before any filesystem I/O happens, which forces
+    // DiskSpace (the first check RunAsync makes) down its failure path without
+    // needing any platform-specific setup or a contrived seam in Doctor itself.
+    /// <summary>
+    /// An invalid repo path forces a check to fail; RunAsync must not throw, and the
+    /// failing check must come back Unavailable with a reason rather than propagate.
+    /// </summary>
+    [Fact]
+    public async Task ARepoPathThatMakesACheckThrowComesBackUnavailableRatherThanPropagating()
+    {
+        var checks = await Doctor.RunAsync("bad\0path", CancellationToken.None);
+
+        var diskSpace = Assert.Single(checks, c => c.Name == "disk space");
+        Assert.Equal(CheckStatus.Unavailable, diskSpace.Status);
+        Assert.False(string.IsNullOrWhiteSpace(diskSpace.Detail));
+
+        Assert.All(checks, c =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(c.Name));
+            Assert.False(string.IsNullOrWhiteSpace(c.Detail));
+        });
+    }
 }
