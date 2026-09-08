@@ -10,6 +10,7 @@ run.log
 bin/
 obj/
 artifacts/
+nupkg/
 *.user
 
 # SDD controller workspace (scratch)
