@@ -34,9 +34,24 @@ public sealed class EndToEndTests : IDisposable
         // A dry job keeps the whole flow to a few minutes. It is enough to prove the
         // pipeline end to end; it is NOT enough to prove a statistically real win,
         // which is what the manual verification in Step 3 exists for.
+        //
+        // The timeout is raised well above the 15m product default because it is
+        // measuring the wrong thing here. These tests assert which verdict the
+        // pipeline reaches, and a subprocess killed on the clock reports Crash --
+        // so on a machine slow enough to trip it, the assertion under test is
+        // replaced by an assertion about the runner's speed. That is not
+        // hypothetical: ubuntu-latest ran this assembly in 94 minutes against 17
+        // locally, and both end-to-end tests died at 15m06s with Crash where Fail
+        // was expected. xunit runs collections in parallel and each of these spawns
+        // real builds and real BenchmarkDotNet runs, so the load is self-inflicted
+        // and the slowest subprocess is far slower than the same command run alone.
+        // 15m stays the default for real repositories, where a build or test suite
+        // that runs that long is a genuine problem worth surfacing as Crash.
         var configPath = Path.Combine(_repo, ".autor3search", "config.yaml");
         File.WriteAllText(configPath,
-            File.ReadAllText(configPath).Replace("job: short", "job: dry"));
+            File.ReadAllText(configPath)
+                .Replace("job: short", "job: dry")
+                .Replace("timeout: 15m", "timeout: 90m"));
 
         Git("add", "-A");
         Git("commit", "-q", "-m", "use a dry job for the end-to-end test");

@@ -56,15 +56,23 @@ public sealed class EvalCommandIntegrationTests : IDisposable
     /// un-ignores it under `.autor3search/*`), so an uncommitted edit to it makes the
     /// tree dirty — and <c>baseline</c> correctly refuses a dirty tree. That refusal is
     /// correct production behaviour; the test must satisfy it rather than work around it.
-    /// The commit is skipped when <paramref name="job"/> is <c>"short"</c> — init's own
-    /// default — because the replace is then a genuine no-op and there is nothing to
-    /// commit; committing unconditionally would fail on exactly that case.
+    /// The commit is guarded on the content actually differing: committing when
+    /// nothing changed fails with "nothing to commit". The guard is kept even though
+    /// the timeout replace below always changes something today, so that a future
+    /// edit which happens to be a no-op does not fail here.
     /// </summary>
     private void PinBaseline(string job = "dry", double? minEffectPct = null)
     {
         var configPath = Path.Combine(_repo, ".autor3search", "config.yaml");
         var original = File.ReadAllText(configPath);
-        var config = original.Replace("job: short", $"job: {job}");
+        var config = original
+            .Replace("job: short", $"job: {job}")
+            // Same reason as EndToEndTests: these tests assert which verdict the
+            // pipeline reaches, and a subprocess killed on the 15m product default
+            // reports Crash instead, turning every assertion here into an assertion
+            // about how fast the runner is. This assembly takes ~17 minutes locally
+            // and ~94 on ubuntu-latest, so the margin the default leaves is not real.
+            .Replace("timeout: 15m", "timeout: 90m");
 
         if (minEffectPct is { } pct)
         {
