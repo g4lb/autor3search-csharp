@@ -164,7 +164,10 @@ public class VerdictTests
         var r = Verdict.Decide(new VerdictInput(deltas, Stats.GeoMean(deltas), 5.0, 1.0));
 
         Assert.Contains(r.Warnings, w => w.Contains("no KEEP was reachable"));
-        Assert.Contains(r.Warnings, w => w.Contains("raise count to at least"));
+        // Hand-verified: alpha/k = 0.05/7 = 0.0071429; the n=5 floor is 2/C(10,5) = 0.0079365
+        // (does not clear); the n=6 floor is 2/C(12,6) = 0.0021645 (clears) — so 6 is the
+        // smallest n that reaches the corrected threshold.
+        Assert.Contains(r.Warnings, w => w.Contains("raise count to at least 6"));
     }
 
     /// <summary>When sample sizes are large enough to reach the corrected threshold, no warning fires.</summary>
@@ -224,5 +227,50 @@ public class VerdictTests
     {
         var r = Verdict.Decide(new VerdictInput([], 1.0, 5.0, 1.0));
         Assert.Equal(VerdictStatus.Discard, r.Status);
+    }
+
+    // Pins the regression guard's strict `>` comparison: PctChange == MaxRegressPct exactly
+    // must NOT trip it. A one-character slip to `>=` would discard this instead of keeping it.
+    /// <summary>A regression exactly at MaxRegressPct does not trip the guard.</summary>
+    [Fact]
+    public void ARegressionExactlyAtTheLimitDoesNotTripTheGuard()
+    {
+        var r = Verdict.Decide(In(
+            D("A.Fast", -60, 0.0001, true),
+            D("B.AtLimit", 5.0, 0.001, true)));
+
+        Assert.Equal(VerdictStatus.Keep, r.Status);
+        Assert.Empty(r.Regressions);
+    }
+
+    // Pins rule 2a's strict `<` comparison: Score == 1 - MinEffectPct/100 exactly must NOT
+    // qualify as KEEP. A one-character slip to `<=` would keep a change that is only as good
+    // as the minimum effect floor, not strictly better than it.
+    /// <summary>A score exactly at the min-effect threshold discards as BelowMinEffect, not Keep.</summary>
+    [Fact]
+    public void AScoreExactlyAtTheMinEffectThresholdDiscardsAsBelowMinEffect()
+    {
+        var deltas = new[] { D("A.One", -30, 0.0001, significant: true) };
+        var input = new VerdictInput(deltas, Score: 0.99, MaxRegressPct: 5.0, MinEffectPct: 1.0);
+        var r = Verdict.Decide(input);
+
+        Assert.Equal(VerdictStatus.Discard, r.Status);
+        Assert.Equal(Reasons.BelowMinEffect, r.Reason);
+    }
+
+    // Pins rule 2b's strict `<` comparison: P == Alpha/k exactly must NOT count as improved.
+    // A one-character slip to `<=` would let a p-value sitting exactly on the corrected
+    // threshold pass, defeating the point of having a threshold. Score is set well below the
+    // min-effect line so a wrongly-true `improved` would show up as an incorrect KEEP.
+    /// <summary>A p-value exactly at the corrected alpha does not count as improved.</summary>
+    [Fact]
+    public void APValueExactlyAtTheCorrectedThresholdDoesNotCountAsImproved()
+    {
+        var deltas = new[] { D("A.One", -30, 0.05, significant: true) };
+        var input = new VerdictInput(deltas, Score: 0.5, MaxRegressPct: 5.0, MinEffectPct: 1.0);
+        var r = Verdict.Decide(input);
+
+        Assert.Equal(VerdictStatus.Discard, r.Status);
+        Assert.Equal(Reasons.NoImprovement, r.Reason);
     }
 }

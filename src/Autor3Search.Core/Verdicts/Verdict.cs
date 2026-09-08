@@ -161,13 +161,12 @@ public static class Verdict
             for (var i = 0; i < regressions.Count; i++)
             {
                 if (i > 0) sb.Append(", ");
-                sb.Append(CultureInfo.InvariantCulture,
-                    $"{regressions[i].Name} {regressions[i].PctChange:+0.0;-0.0}%");
+                sb.Append(Inv($"{regressions[i].Name} {regressions[i].PctChange:+0.0;-0.0}%"));
             }
 
             return new VerdictResult(
                 VerdictStatus.Discard, Reasons.GuardRegression, input.Score,
-                $"regression guard tripped (limit {input.MaxRegressPct:+0.0;-0.0}%): {sb}",
+                Inv($"regression guard tripped (limit {input.MaxRegressPct:+0.0;-0.0}%): {sb}"),
                 regressions, warnings);
         }
 
@@ -179,23 +178,39 @@ public static class Verdict
         {
             return new VerdictResult(
                 VerdictStatus.Keep, Reasons.Improved, input.Score,
-                $"score {input.Score:F4} ({pct:+0.00;-0.00}%)", [], warnings);
+                Inv($"score {input.Score:F4} ({pct:+0.00;-0.00}%)"), [], warnings);
         }
 
         if (improved && input.Score < 1)
         {
             return new VerdictResult(
                 VerdictStatus.Discard, Reasons.BelowMinEffect, input.Score,
-                $"score {input.Score:F4} ({pct:+0.00;-0.00}%), a real improvement but below " +
-                $"the {input.MinEffectPct:F1}% minimum effect size",
+                Inv($"score {input.Score:F4} ({pct:+0.00;-0.00}%), a real improvement but below ") +
+                Inv($"the {input.MinEffectPct:F1}% minimum effect size"),
                 [], warnings);
         }
 
+        // "no overall improvement", not "no significant improvement": a benchmark may well
+        // have improved significantly here (improved can be true and score still >= 1) —
+        // the geomean simply did not clear 1. This message must stay true either way; the
+        // machine-readable Reasons.NoImprovement constant is unchanged (Tasks 18-20 and
+        // results.tsv bind to its wire value).
         return new VerdictResult(
             VerdictStatus.Discard, Reasons.NoImprovement, input.Score,
-            $"score {input.Score:F4} ({pct:+0.00;-0.00}%), no significant improvement",
+            Inv($"score {input.Score:F4} ({pct:+0.00;-0.00}%), no overall improvement"),
             [], warnings);
     }
+
+    /// <summary>
+    /// Formats invariantly, regardless of ambient culture.
+    ///
+    /// These strings are read by an agent and written into results.tsv, so their shape
+    /// is a contract. Relying on the repository's InvariantGlobalization setting would
+    /// put that contract in a different file, where removing it for an unrelated reason
+    /// would silently change this one's output.
+    /// </summary>
+    private static string Inv(FormattableString s) =>
+        s.ToString(CultureInfo.InvariantCulture);
 
     private static IReadOnlyList<string> MeasurementWarnings(IReadOnlyList<Delta> deltas, int k)
     {
@@ -231,7 +246,13 @@ public static class Verdict
     {
         if (deltas.Count == 0) return null;
 
-        var worstN = 0;
+        // The LARGEST min(NBase, NCand) among the deltas that can't clear the bar. A larger
+        // n gives a smaller p-value floor, so the benchmark with the largest n is the
+        // hardest one to make this claim about — reporting its floor is the strongest
+        // statement that still holds for every benchmark in the set. Do not swap this for
+        // Math.Min: that would pick the smallest n, overstate the floor, and make the
+        // message wrong.
+        var largestN = 0;
         var alpha = 0.0;
 
         foreach (var d in deltas)
@@ -241,20 +262,26 @@ public static class Verdict
                 return null;  // this one can clear it, which is enough for a KEEP
 
             var n = Math.Min(d.NBase, d.NCand);
-            if (n > worstN) { worstN = n; alpha = d.Alpha; }
+            if (n > largestN) { largestN = n; alpha = d.Alpha; }
         }
 
         var corrected2 = alpha / k;
-        var floor = MannWhitney.MinimumAttainableP(worstN, worstN);
+
+        // Assumes NBase == NCand for the reported delta (true today: both sides always run
+        // the same configured round count). MinimumAttainableP(largestN, largestN) is only
+        // the true floor for that delta when its two sides are equal; if base and candidate
+        // counts could ever differ, this would need to report each delta's own
+        // MinimumAttainableP(NBase, NCand) instead of re-deriving it from a single n.
+        var floor = MannWhitney.MinimumAttainableP(largestN, largestN);
         var need = CountForAlpha(corrected2);
 
         var msg =
-            $"no KEEP was reachable: comparing {k} benchmark(s) corrects the significance " +
-            $"threshold to {corrected2:F5}, but with {worstN} rounds per side the test cannot " +
-            $"produce a p-value below {floor:F5} however large the improvement is";
+            Inv($"no KEEP was reachable: comparing {k} benchmark(s) corrects the significance ") +
+            Inv($"threshold to {corrected2:F5}, but with {largestN} rounds per side the test cannot ") +
+            Inv($"produce a p-value below {floor:F5} however large the improvement is");
 
         return need > 0
-            ? msg + $" — raise count to at least {need}"
+            ? msg + Inv($" — raise count to at least {need}")
             : msg + " — raise count, or measure fewer benchmarks";
     }
 
