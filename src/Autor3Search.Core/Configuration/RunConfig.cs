@@ -107,10 +107,23 @@ public sealed class RunConfig
         Unfreeze = [],
     };
 
-    /// <summary>Reads a config file, applying defaults for omitted fields, then validates.</summary>
+    /// <summary>
+    /// Reads a config file, applying defaults for omitted fields, then validates.
+    /// Every failure mode — a missing or unreadable file, syntactically invalid YAML,
+    /// or a value that fails <see cref="Validate"/> — surfaces as an
+    /// <see cref="InvalidOperationException"/> naming <paramref name="absolutePath"/>.
+    /// </summary>
     public static RunConfig Load(string absolutePath)
     {
-        var yaml = File.ReadAllText(absolutePath);
+        string yaml;
+        try
+        {
+            yaml = File.ReadAllText(absolutePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"could not read {absolutePath}: {ex.Message}", ex);
+        }
 
         var deserializer = new DeserializerBuilder()
             .WithNamingConvention(UnderscoredNamingConvention.Instance)
@@ -119,7 +132,16 @@ public sealed class RunConfig
 
         // Deserializing onto a fresh object then merging keeps "omitted" distinct from
         // "explicitly set to a zero value" for the value-typed fields.
-        var parsed = deserializer.Deserialize<RunConfig?>(yaml) ?? new RunConfig();
+        RunConfig parsed;
+        try
+        {
+            parsed = deserializer.Deserialize<RunConfig?>(yaml) ?? new RunConfig();
+        }
+        catch (YamlDotNet.Core.YamlException ex)
+        {
+            throw new InvalidOperationException($"{absolutePath} is not valid YAML: {ex.Message}", ex);
+        }
+
         var merged = Merge(Default(), parsed, yaml);
 
         try

@@ -90,6 +90,51 @@ public class RunConfigTests
         finally { File.Delete(path); }
     }
 
+    /// <summary>
+    /// An explicit zero must survive the defaults merge. This is the case a naive
+    /// "if the parsed value is falsy, use the default" merge gets wrong, and it would
+    /// fail silently: the run would quietly enforce a 1% minimum effect the user had
+    /// deliberately turned off.
+    /// </summary>
+    [Fact]
+    public void LoadPreservesAnExplicitZeroAgainstANonZeroDefault()
+    {
+        var path = WriteTemp("""
+            benchmark_project: bench/B.csproj
+            min_effect_pct: 0
+            max_regress_pct: 0
+            """);
+        try
+        {
+            var c = RunConfig.Load(path);
+            Assert.Equal(0.0, c.MinEffectPct);
+            Assert.Equal(0.0, c.MaxRegressPct);
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>Load throws InvalidOperationException naming the path when the file does not exist.</summary>
+    [Fact]
+    public void LoadRefusesAMissingFile()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"a3s-cfg-missing-{Guid.NewGuid():N}.yaml");
+        var ex = Assert.Throws<InvalidOperationException>(() => RunConfig.Load(path));
+        Assert.Contains(path, ex.Message);
+    }
+
+    /// <summary>Load throws InvalidOperationException naming the path when the YAML is syntactically broken.</summary>
+    [Fact]
+    public void LoadRefusesBrokenYaml()
+    {
+        var path = WriteTemp("benchmarks:\n  - [unclosed\n");
+        try
+        {
+            var ex = Assert.Throws<InvalidOperationException>(() => RunConfig.Load(path));
+            Assert.Contains(path, ex.Message);
+        }
+        finally { File.Delete(path); }
+    }
+
     // The floor exists because the exact Mann-Whitney test cannot report p < 0.05
     // below 4 observations per side no matter how large the improvement, so every
     // experiment would DISCARD on a technicality with nothing explaining why.
