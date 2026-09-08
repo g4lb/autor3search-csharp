@@ -56,6 +56,15 @@ public static class Pipeline
     {
         var timeout = o.Config.TimeoutDuration;
 
+        // Resolved ONCE, here, and used for every gate, build, test and measurement
+        // below, and for the KEEP advance at the very end. The agent is autonomous and
+        // nothing stops it committing while a multi-minute eval runs; if the advance
+        // step re-sampled HEAD after build/test/measure instead of reusing this value,
+        // it could point the measurement baseline at a commit that was never scope-
+        // gated, never built, never tested and never measured — exactly the unexamined-
+        // code-becomes-accepted-baseline-state failure this pipeline exists to prevent.
+        var candidate = await Git.HeadCommitAsync(o.Root, ct).ConfigureAwait(false);
+
         // 1. Scope, before anything is restored or built, so an out-of-scope edit is
         //    reported as itself rather than as a confusing build error.
         //
@@ -264,7 +273,27 @@ public static class Pipeline
 
         if (verdict.Status == VerdictStatus.Keep)
         {
-            baseline = await AdvanceMeasurementBaselineAsync(o, ct).ConfigureAwait(false);
+            // Re-read HEAD rather than trusting `candidate` still describes the working
+            // tree: everything above — scope, restore, build, test, measure — ran
+            // against whatever was at `candidate` when this eval started, but that is
+            // now several minutes in the past. If HEAD moved in the meantime, advancing
+            // to either commit would be wrong: advancing to `candidate` would encode a
+            // stale git ref the repository has already moved past, and advancing to
+            // whatever HEAD is NOW would accept a commit that was never gated, built,
+            // tested or measured. Neither is safe, so this fails instead and asks for a
+            // clean re-run.
+            var headNow = await Git.HeadCommitAsync(o.Root, ct).ConfigureAwait(false);
+            if (headNow != candidate)
+            {
+                return Gate(o, VerdictStatus.Fail, Reasons.BaselineTampered,
+                    $"the repository's HEAD moved to {headNow[..7]} while this experiment was " +
+                    $"running — the commit that was gated, built, tested and measured was " +
+                    $"{candidate[..7]}. Nothing was advanced. This can happen if the agent " +
+                    "committed while the eval was in flight; re-run the experiment against the " +
+                    "current HEAD.");
+            }
+
+            baseline = await AdvanceMeasurementBaselineAsync(o, candidate, ct).ConfigureAwait(false);
         }
 
         return new EvalOutcome(verdict, new Measurements(timeDeltas, byteDeltas), baseline);
@@ -277,11 +306,23 @@ public static class Pipeline
     /// Without this, once one real improvement was kept, every later experiment kept
     /// comparing against the same stale starting point — and a no-op could coast to
     /// KEEP on an earlier win it did not contribute to. The frozen anchor is untouched.
+    ///
+    /// <paramref name="candidate"/> is the single commit value resolved once at the top
+    /// of <see cref="EvalAsync"/> and already confirmed, by the caller, to still match
+    /// HEAD — not re-sampled here, so this can never advance to a commit that was not
+    /// the one actually gated and measured.
+    ///
+    /// There is a narrow window between the worktree move below succeeding and
+    /// <see cref="StateStore.SaveBaseline(Baseline)"/> completing. If the process dies
+    /// in that window, the worktree is already at `candidate` but the saved baseline
+    /// still names the old MeasureCommit — so the NEXT eval's own worktree-integrity
+    /// check (4b) will see them disagree and report Reasons.BaselineTampered for what
+    /// was really an interrupted write, not tampering. Not fixed here — flagged so a
+    /// future reader does not mistake that report for an attack.
     /// </summary>
     private static async Task<Baseline> AdvanceMeasurementBaselineAsync(
-        PipelineOptions o, CancellationToken ct)
+        PipelineOptions o, string candidate, CancellationToken ct)
     {
-        var candidate = await Git.HeadCommitAsync(o.Root, ct).ConfigureAwait(false);
         await Git.MoveWorktreeToAsync(o.Store.WorktreePath, candidate, ct).ConfigureAwait(false);
 
         var advanced = o.Baseline with { MeasureCommit = candidate };

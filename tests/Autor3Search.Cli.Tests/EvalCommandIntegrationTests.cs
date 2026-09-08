@@ -49,19 +49,30 @@ public sealed class EvalCommandIntegrationTests : IDisposable
     }
 
     /// <summary>
-    /// Sets the BenchmarkDotNet job and pins the baseline. Must run before any eval.
+    /// Sets the BenchmarkDotNet job, optionally raises min_effect_pct, and pins the
+    /// baseline. Must run before any eval.
     ///
     /// The config edit is not committed: `init` gitignores the whole `.autor3search/`
     /// directory with a `!.autor3search/config.yaml` negation, but git does not
     /// descend into an ignored directory to honour a negation for a file inside it —
     /// so config.yaml is never actually tracked here, and this edit is invisible to
     /// `git status --porcelain` (and therefore to <c>baseline</c>'s dirty-tree gate)
-    /// either way.
+    /// either way. It still lands in the hashed config, because <c>baseline</c> hashes
+    /// the file on disk, not what git tracks.
     /// </summary>
-    private void PinBaseline(string job = "dry")
+    private void PinBaseline(string job = "dry", double? minEffectPct = null)
     {
         var configPath = Path.Combine(_repo, ".autor3search", "config.yaml");
-        File.WriteAllText(configPath, File.ReadAllText(configPath).Replace("job: short", $"job: {job}"));
+        var config = File.ReadAllText(configPath).Replace("job: short", $"job: {job}");
+
+        if (minEffectPct is { } pct)
+        {
+            config = config.Replace(
+                "min_effect_pct: 1.0",
+                $"min_effect_pct: {pct.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        }
+
+        File.WriteAllText(configPath, config);
 
         var baseline = BaselineCommand.RunAsync(
             Args.Parse(["baseline", "-C", _repo, "-tag", Tag]),
@@ -151,11 +162,20 @@ public sealed class EvalCommandIntegrationTests : IDisposable
         Assert.Contains(rows, r => r.Status == "KEEP");
     }
 
+    // A high min_effect_pct here, deliberately, not a retry or a loosened assertion.
+    // dotnet test runs Core.Tests and Cli.Tests as parallel processes, and a no-op
+    // measured while the OTHER assembly's suite loads the machine can land several
+    // percent from zero with a convincing p-value and spuriously KEEP — this is real
+    // and documented, not hypothetical: the Go sibling's README records catching
+    // exactly this, -2.8% at p=0.004, "while an unrelated build was running". A no-op
+    // asserting DISCARD must not depend on the machine being quiet, so the fix is to
+    // raise the bar noise cannot clear rather than to hope the machine stays idle. The
+    // assertion below still genuinely tests that a no-op change is discarded.
     /// <summary>A comment-only change carries no measurable improvement and is discarded.</summary>
     [Fact]
     public async Task ANoOpCommentChangeIsDiscarded()
     {
-        PinBaseline();
+        PinBaseline(minEffectPct: 50.0);
         ApplyNoOpChangeAndCommit();
 
         var (code, _, _) = await RunEval();
@@ -200,11 +220,17 @@ public sealed class EvalCommandIntegrationTests : IDisposable
         Assert.Equal(candidate, await Git.HeadCommitAsync(store.WorktreePath, CancellationToken.None));
     }
 
+    // Same exposure and same reasoning as ANoOpCommentChangeIsDiscarded above: a no-op
+    // measured on a machine loaded by the parallel Core.Tests process can spuriously
+    // KEEP and advance MeasureCommit on noise alone (the Go sibling's README documents
+    // this exact phenomenon). A high min_effect_pct removes the dependence on the
+    // machine being quiet; the assertion below still genuinely tests that a DISCARD
+    // leaves MeasureCommit untouched.
     /// <summary>A DISCARD leaves the measurement baseline exactly where it was.</summary>
     [Fact]
     public async Task ADiscardLeavesTheMeasurementBaselineAlone()
     {
-        PinBaseline();
+        PinBaseline(minEffectPct: 50.0);
         var store = new StateStore(_repo, Tag);
         var before = store.LoadBaseline().MeasureCommit;
 

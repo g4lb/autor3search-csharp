@@ -67,7 +67,17 @@ internal static partial class EvalCommand
 
         var logPath = Path.Combine(repo, ResultsFile.RunLogName);
         await using var logStream = new FileStream(logPath, FileMode.Append, FileAccess.Write, FileShare.Read);
-        using var log = new StreamWriter(logStream) { AutoFlush = true };
+
+        // Runner writes to this from BOTH its OutputDataReceived and ErrorDataReceived
+        // handlers, which .NET raises on separate threadpool threads that run
+        // concurrently for a process writing to both stdout and stderr — which `dotnet
+        // build` and `dotnet test` both do. A plain StreamWriter is explicitly not
+        // thread-safe: without this wrapper, two concurrent writes can interleave or
+        // corrupt a run.log line, or throw from inside a callback, which aborts the
+        // whole eval with no results.tsv row. Synchronized's Dispose still forwards to
+        // the wrapped StreamWriter's Dispose (which flushes and, in turn, disposes
+        // logStream), so the `using` below tears everything down correctly.
+        using var log = TextWriter.Synchronized(new StreamWriter(logStream) { AutoFlush = true });
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         using var watchStop = new CancellationTokenSource();
@@ -86,8 +96,21 @@ internal static partial class EvalCommand
             // SIGTERM/Ctrl+C. Either way nothing was measured, so there is nothing to
             // record: writing a results.tsv row here would claim a verdict that was
             // never reached.
-            stderr.WriteLine($"experiment {experiment} abandoned before completion — nothing was " +
-                "measured, so nothing was recorded in results.tsv.");
+            //
+            // Naming the cause matters here specifically because the force-stop marker
+            // is STICKY: nothing in this codebase clears it yet (`stop -clear` is Task
+            // 19's job), so once written it aborts every later eval on this tag almost
+            // immediately. Without this distinction that reads as a confusing, seemingly
+            // spurious one-liner on every subsequent run; with it, the message tells the
+            // operator exactly what to go look for.
+            var cause = store.ForceStopRequested
+                ? "a force-stop was requested for this tag (the marker is sticky until cleared " +
+                  "with 'autor3search-csharp stop -clear' — remove it, or it will abort every " +
+                  "later eval on this tag too)"
+                : "the process received a shutdown signal (Ctrl+C, SIGINT or SIGTERM)";
+
+            stderr.WriteLine($"experiment {experiment} abandoned before completion: {cause}. " +
+                "Nothing was measured, so nothing was recorded in results.tsv.");
             return 2;
         }
         finally

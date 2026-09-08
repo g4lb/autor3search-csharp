@@ -21,8 +21,14 @@ internal static class RunTag
         var branch = await Git.CurrentBranchAsync(repo, ct).ConfigureAwait(false);
         var tag = StateStore.TagFromBranch(branch);
 
-        return tag ?? throw new InvalidOperationException(
-            $"the current branch \"{branch}\" is not a run branch, so there is no run to act on. " +
-            "Pass -tag <tag>, or check out the run branch.");
+        // TagFromBranch strips the prefix and nothing else, so a branch that is exactly
+        // the prefix (or the prefix plus only whitespace) yields "" or "   ", not null —
+        // guarded the same way the explicit -tag flag is above, rather than letting an
+        // empty/blank tag silently resolve to a nonsensical run.
+        return !string.IsNullOrWhiteSpace(tag)
+            ? tag
+            : throw new InvalidOperationException(
+                $"the current branch \"{branch}\" is not a run branch, so there is no run to act on. " +
+                "Pass -tag <tag>, or check out the run branch.");
     }
 }
