@@ -1,0 +1,16 @@
+# Local design notes, plans and run logs. Not part of the shipped tool.
+docs/
+
+# Harness output inside a repository under optimization.
+.autor3search/
+results.tsv
+run.log
+
+# .NET build output.
+bin/
+obj/
+artifacts/
+*.user
+
+# SDD controller workspace (scratch)
+.superpowers/
