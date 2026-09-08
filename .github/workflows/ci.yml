@@ -3,6 +3,11 @@ name: ci
 on:
   push:
     branches: [main]
+    # The release job below is gated on refs/tags/v*, which is only ever reachable
+    # if tag pushes trigger this workflow at all. Without this line the gate is
+    # unreachable: tagging runs nothing, and the tag looks like a release that
+    # published nothing.
+    tags: ['v*']
   pull_request:
     branches: [main]
 
