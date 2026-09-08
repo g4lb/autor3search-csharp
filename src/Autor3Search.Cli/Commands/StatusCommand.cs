@@ -39,13 +39,15 @@ internal static class StatusCommand
             ? $"measuring vs   {baseline.MeasureCommit[..7]}  (still at the baseline)"
             : $"measuring vs   {baseline.MeasureCommit[..7]}  (advanced past the baseline by earlier KEEPs)");
 
-        stdout.WriteLine($"worktree       {store.WorktreePath}");
+        stdout.WriteLine(Directory.Exists(store.WorktreePath)
+            ? $"worktree       {store.WorktreePath}"
+            : $"worktree       {store.WorktreePath}  (missing — the run cannot measure until this is restored)");
         stdout.WriteLine(
             $"experiments    {summary.Total} run  ({summary.Keeps} keep, {summary.Discards} discard, " +
             $"{summary.Fails} fail, {summary.Crashes} crash)  — next is #{ResultsFile.NextExperimentNumber(Path.Combine(repo, ResultsFile.RelativePath))}");
 
         stdout.WriteLine(alive
-            ? $"eval           running (pid {claim}) — an experiment is being measured"
+            ? $"eval           running (pid {claim}) — a process matching the recorded pid is running"
             : claim is not null
                 ? $"eval           not running (a stale claim for pid {claim} was left by an eval that did not exit cleanly)"
                 : "eval           not running");

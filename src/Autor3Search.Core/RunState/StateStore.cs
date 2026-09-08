@@ -157,10 +157,19 @@ public sealed class StateStore(string repoRoot, string tag)
         File.WriteAllText(ForceStopPath, DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture));
     }
 
-    /// <summary>Cancels a pending stop, forced or not.</summary>
+    /// <summary>
+    /// Cancels a pending stop, forced or not.
+    ///
+    /// Deletes ForceStopPath before StopRequestPath, deliberately. If a delete throws
+    /// partway through (a locked file, say), leaving the force marker gone and the
+    /// graceful one still present is the only partial state that keeps "force implies
+    /// graceful" true — the reverse order could leave ForceStopRequested set with
+    /// StopRequested cleared, which eval would read as an order to abandon right now
+    /// while status reports nothing pending.
+    /// </summary>
     public void ClearStop()
     {
-        foreach (var p in new[] { StopRequestPath, ForceStopPath })
+        foreach (var p in new[] { ForceStopPath, StopRequestPath })
         {
             try { File.Delete(p); }
             catch (FileNotFoundException) { }
