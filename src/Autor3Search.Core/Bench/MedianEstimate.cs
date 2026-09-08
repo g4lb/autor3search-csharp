@@ -27,6 +27,16 @@ public static class MedianEstimate
         if (values.Length == 0)
             throw new ArgumentException("cannot summarize an empty sample", nameof(values));
 
+        for (var i = 0; i < values.Length; i++)
+        {
+            if (!double.IsFinite(values[i]))
+            {
+                throw new ArgumentException(
+                    $"sample '{nameof(values)}' contains a non-finite value ({values[i]}) at index {i}",
+                    nameof(values));
+            }
+        }
+
         var sorted = (double[])values.Clone();
         Array.Sort(sorted);
 
@@ -44,7 +54,7 @@ public static class MedianEstimate
         var scale = Math.Pow(0.5, n);
         for (var i = 0; i < n; i++)
         {
-            cumulative += Binomial(n, i) * scale;
+            cumulative += Combinatorics.Binomial(n, i) * scale;
             if (cumulative > alpha / 2.0) break;
             k = i + 1;
         }
@@ -74,15 +84,5 @@ public static class MedianEstimate
             if (Math.Pow(0.5, n) <= half) return n;
         }
         return 1000;
-    }
-
-    private static double Binomial(int n, int k)
-    {
-        if (k < 0 || k > n) return 0.0;
-        k = Math.Min(k, n - k);
-
-        var result = 1.0;
-        for (var i = 1; i <= k; i++) result = result * (n - k + i) / i;
-        return result;
     }
 }

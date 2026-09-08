@@ -73,6 +73,11 @@ public class MannWhitneyTests
         var r = MannWhitney.Test(a, b);
         Assert.False(r.UsedExact);
         Assert.InRange(r.P, 0.0, 1.0);
+
+        // The tie warning is the only warning MannWhitney ever emits, and it is
+        // surfaced to the agent and to results.tsv — it must actually be there, not
+        // just implied by UsedExact being false.
+        Assert.Contains(r.Warnings, w => w.Contains("tied", StringComparison.Ordinal));
     }
 
     /// <summary>Samples above the exact-distribution size cap fall back to the normal approximation.</summary>
@@ -113,5 +118,51 @@ public class MannWhitneyTests
     public void FewerThanTwoObservationsIsRejected()
     {
         Assert.Throws<ArgumentException>(() => MannWhitney.Test([1.0], [1.0, 2.0]));
+    }
+
+    /// <summary>An unbalanced pair of completely separated samples hits its own combinatorial floor.</summary>
+    [Fact]
+    public void UnbalancedCompletelySeparatedSamplesGiveTheMinimumAttainableP()
+    {
+        double[] a = [1, 2];
+        double[] b = [101, 102, 103, 104, 105, 106, 107, 108, 109, 110];
+        var r = MannWhitney.Test(a, b);
+
+        // With n1=2, n2=10 the floor is 2/C(12,2) = 2/66.
+        Assert.True(r.UsedExact);
+        Assert.Equal(2.0 / 66.0, r.P, 12);
+        Assert.Equal(2.0 / 66.0, MannWhitney.MinimumAttainableP(2, 10), 12);
+    }
+
+    /// <summary>Two samples with zero spread produce p = 1.0 via the variance-guard, not NaN or a crash.</summary>
+    [Fact]
+    public void AllIdenticalValuesGiveExactlyOne()
+    {
+        double[] a = [5, 5, 5, 5];
+        double[] b = [5, 5, 5, 5];
+        var r = MannWhitney.Test(a, b);
+        Assert.False(r.UsedExact);
+        Assert.Equal(1.0, r.P);
+    }
+
+    // A NaN reaching the ranking step sorts unpredictably and never compares equal to
+    // itself, so it would silently avoid registering as a tie and let the exact path
+    // return a confidently wrong p with no warning. It must be rejected up front.
+    /// <summary>A NaN in the first sample is rejected rather than silently mis-scored.</summary>
+    [Fact]
+    public void NonFiniteValueInFirstSampleIsRejected()
+    {
+        double[] a = [1, 2, double.NaN, 4];
+        double[] b = [1, 2, 3, 4];
+        Assert.Throws<ArgumentException>(() => MannWhitney.Test(a, b));
+    }
+
+    /// <summary>A NaN in the second sample is rejected rather than silently mis-scored.</summary>
+    [Fact]
+    public void NonFiniteValueInSecondSampleIsRejected()
+    {
+        double[] a = [1, 2, 3, 4];
+        double[] b = [1, 2, double.NaN, 4];
+        Assert.Throws<ArgumentException>(() => MannWhitney.Test(a, b));
     }
 }

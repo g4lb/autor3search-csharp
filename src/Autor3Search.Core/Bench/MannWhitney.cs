@@ -40,13 +40,18 @@ public static class MannWhitney
                 $"need at least 2 observations per side, got {a.Length}/{b.Length}");
         }
 
+        RequireFinite(a, nameof(a));
+        RequireFinite(b, nameof(b));
+
         int n1 = a.Length, n2 = b.Length;
         var warnings = new List<string>();
 
         var (rankSumA, hasTies, tieCorrection) = RankSum(a, b);
 
         // U for sample A, and its mirror. The test is symmetric in the two samples.
-        var u1 = rankSumA - n1 * (n1 + 1) / 2.0;
+        // n1 * (n1 + 1L) forces long arithmetic so this can't silently overflow for
+        // large n1 before the division back down to double.
+        var u1 = rankSumA - n1 * (n1 + 1L) / 2.0;
         var u2 = (double)n1 * n2 - u1;
         var uMin = Math.Min(u1, u2);
 
@@ -84,7 +89,26 @@ public static class MannWhitney
     /// happened; this is the function that detects it.
     /// </summary>
     public static double MinimumAttainableP(int n1, int n2) =>
-        Math.Min(1.0, 2.0 / Binomial(n1 + n2, n1));
+        Math.Min(1.0, 2.0 / Combinatorics.Binomial(n1 + n2, n1));
+
+    /// <summary>
+    /// Rejects a sample containing NaN or ±Infinity. A non-finite value sorts
+    /// unpredictably (NaN in particular never compares equal to itself, so it never
+    /// registers as a tie), which would let a corrupted measurement produce a
+    /// confidently wrong p-value with no warning.
+    /// </summary>
+    private static void RequireFinite(double[] values, string paramName)
+    {
+        for (var i = 0; i < values.Length; i++)
+        {
+            if (!double.IsFinite(values[i]))
+            {
+                throw new ArgumentException(
+                    $"sample '{paramName}' contains a non-finite value ({values[i]}) at index {i}",
+                    paramName);
+            }
+        }
+    }
 
     /// <summary>
     /// Midrank sum for sample A over the pooled ranking, plus whether ties occurred
@@ -161,7 +185,7 @@ public static class MannWhitney
         double cumulative = 0;
         for (var k = 0; k <= target; k++) cumulative += counts[n1, n2, k];
 
-        return cumulative / Binomial(n1 + n2, n1);
+        return cumulative / Combinatorics.Binomial(n1 + n2, n1);
     }
 
     /// <summary>
@@ -182,16 +206,5 @@ public static class MannWhitney
         // moves toward the mean.
         var z = (uMin - mean + 0.5) / Math.Sqrt(variance);
         return 2.0 * Normal.SurvivalFunction(Math.Abs(z));
-    }
-
-    /// <summary>C(n, k) as a double. Values stay far inside double range for realistic counts.</summary>
-    private static double Binomial(int n, int k)
-    {
-        if (k < 0 || k > n) return 0.0;
-        k = Math.Min(k, n - k);
-
-        var result = 1.0;
-        for (var i = 1; i <= k; i++) result = result * (n - k + i) / i;
-        return result;
     }
 }

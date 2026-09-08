@@ -88,4 +88,15 @@ public class MedianEstimateTests
     {
         Assert.Throws<ArgumentException>(() => MedianEstimate.Summarize([]));
     }
+
+    // A NaN sorts to an unpredictable position and would silently corrupt both the
+    // reported center and the order-statistic bounds. It must be rejected up front,
+    // the same way MannWhitney rejects one.
+    /// <summary>A NaN in the sample is rejected rather than silently corrupting the summary.</summary>
+    [Fact]
+    public void NonFiniteValueIsRejected()
+    {
+        double[] values = [1, 2, double.NaN, 4, 5, 6];
+        Assert.Throws<ArgumentException>(() => MedianEstimate.Summarize(values));
+    }
 }

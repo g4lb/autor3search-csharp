@@ -42,6 +42,14 @@ public static class BdnReport
                     "treating a missing mean as zero would make it look infinitely fast");
             }
 
+            var meanNs = mean.GetDouble();
+            if (!double.IsFinite(meanNs))
+            {
+                throw new InvalidOperationException(
+                    $"benchmark {fullName} has no Statistics.Mean — it cannot be scored, and " +
+                    $"a non-finite mean ({meanNs}) is exactly as unusable as a missing one");
+            }
+
             long bytes = 0;
             if (b.TryGetProperty("Memory", out var mem)
                 && mem.ValueKind == JsonValueKind.Object
@@ -51,7 +59,7 @@ public static class BdnReport
                 bytes = bpo.GetInt64();
             }
 
-            result.Add(new Observation(fullName, mean.GetDouble(), bytes));
+            result.Add(new Observation(fullName, meanNs, bytes));
         }
 
         return result;

@@ -75,6 +75,24 @@ public class BdnReportTests
         Assert.Contains("X.Y", ex.Message);
     }
 
+    // JSON has no NaN or Infinity literal, so a non-finite Mean can only arrive as a
+    // number whose magnitude overflows double — System.Text.Json accepts "1e999" as a
+    // syntactically valid JSON number and GetDouble() returns double.PositiveInfinity
+    // for it (the standard IEEE-754 overflow-to-infinity behavior), rather than
+    // throwing during parse. That lets a corrupted report slip an infinite mean past
+    // JSON validation and into the harness, where it would look infinitely slow (or,
+    // for -1e999, infinitely fast) unless rejected here.
+    /// <summary>Verifies that Parse rejects a benchmark whose Mean overflows to infinity.</summary>
+    [Fact]
+    public void ParseRejectsABenchmarkWithANonFiniteMean()
+    {
+        var json = """
+            {"Benchmarks":[{"FullName":"X.Y","Statistics":{"Mean":1e999},"Memory":{}}]}
+            """;
+        var ex = Assert.Throws<InvalidOperationException>(() => BdnReport.Parse(json));
+        Assert.Contains("X.Y", ex.Message);
+    }
+
     /// <summary>Verifies that ParseDirectory finds a report file nested under results/.</summary>
     [Fact]
     public void ParseDirectoryFindsTheReportUnderResults()
