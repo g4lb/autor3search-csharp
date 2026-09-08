@@ -52,6 +52,11 @@ Repeat until told to stop:
 the minimum effect size. That is different from `no_significant_improvement`, which
 means nothing measurably moved. The first says keep going in that direction.
 
+`reason: "candidate_moved"` means you committed again while an eval was still running,
+so the commit that got measured is no longer the one that would be accepted. Nothing
+about the baseline is wrong — just re-run `eval`, and let one experiment finish before
+starting the next.
+
 ## Declared benchmarks
 
 {{BENCHMARKS}}

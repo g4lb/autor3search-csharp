@@ -80,6 +80,9 @@ public static class Reasons
     /// <summary>Failed: the pinned baseline worktree moved off its recorded commit.</summary>
     public const string BaselineTampered = "baseline_tampered";
 
+    /// <summary>Failed: the repository's HEAD moved while the experiment was being evaluated.</summary>
+    public const string CandidateMoved = "candidate_moved";
+
     /// <summary>Failed: a dependency file was modified.</summary>
     public const string DependencyChanged = "dependency_changed";
 

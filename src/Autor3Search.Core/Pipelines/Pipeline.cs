@@ -285,12 +285,20 @@ public static class Pipeline
             var headNow = await Git.HeadCommitAsync(o.Root, ct).ConfigureAwait(false);
             if (headNow != candidate)
             {
-                return Gate(o, VerdictStatus.Fail, Reasons.BaselineTampered,
-                    $"the repository's HEAD moved to {headNow[..7]} while this experiment was " +
-                    $"running — the commit that was gated, built, tested and measured was " +
-                    $"{candidate[..7]}. Nothing was advanced. This can happen if the agent " +
-                    "committed while the eval was in flight; re-run the experiment against the " +
-                    "current HEAD.");
+                // Deliberately Reasons.CandidateMoved, not Reasons.BaselineTampered: the
+                // two demand opposite remedies. BaselineTampered means the HARNESS's own
+                // pinned state cannot be trusted and the honest fix is a fresh baseline.
+                // Here the harness state is fine — the AGENT's own HEAD moved during a
+                // multi-minute evaluation — and the fix is simply not to commit while an
+                // eval is in flight, then re-run. Reporting this as BaselineTampered would
+                // tell the agent to tear down a healthy run and lose every kept commit's
+                // measurement lineage over its own mid-flight commit.
+                return Gate(o, VerdictStatus.Fail, Reasons.CandidateMoved,
+                    $"HEAD changed from {candidate[..7]} to {headNow[..7]} between the start of " +
+                    "this evaluation and the point where its result would be banked — the commit " +
+                    "that was gated, built, tested and measured is no longer the commit that " +
+                    "would be accepted. Nothing was changed. Re-run the experiment, and do not " +
+                    "commit while an eval is in flight.");
             }
 
             baseline = await AdvanceMeasurementBaselineAsync(o, candidate, ct).ConfigureAwait(false);
