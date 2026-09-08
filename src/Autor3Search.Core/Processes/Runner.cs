@@ -38,7 +38,12 @@ public readonly record struct RunResult(int ExitCode, string Stdout, string Stde
 /// This is the failure the Go implementation needed process groups and Windows job
 /// objects to avoid; .NET offers it directly.
 /// </summary>
-/// <param name="workingDirectory">Directory the child runs in.</param>
+/// <param name="workingDirectory">
+/// Directory the child runs in. For callers that shell out to BenchmarkDotNet, this is
+/// load-bearing for correctness, not just a base for relative paths: BDN's default
+/// toolchain resolves the project it actually rebuilds and runs by searching upward from
+/// this directory, not from any assembly path given on the command line.
+/// </param>
 /// <param name="timeout">Wall-clock bound on the child.</param>
 /// <param name="log">Receives mirrored output. May be null.</param>
 public sealed class Runner(string workingDirectory, TimeSpan timeout, TextWriter? log)

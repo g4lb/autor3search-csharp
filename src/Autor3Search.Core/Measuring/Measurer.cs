@@ -38,16 +38,43 @@ public static class Measurer
 
         // Build ONCE per side, not per round. Doing it per round would put MSBuild on
         // the clock and its variance into the measurement.
-        var baseExe = await BuildAsync(o.BaseDir, o, ct).ConfigureAwait(false);
-        var candExe = await BuildAsync(o.CandDir, o, ct).ConfigureAwait(false);
+        var baseDir = await BuildAsync(o.BaseDir, o, ct).ConfigureAwait(false);
+        var candDir = await BuildAsync(o.CandDir, o, ct).ConfigureAwait(false);
 
-        return await Interleaver.RunAsync(
-            o.Rounds, o.Warmup,
-            Side(o.BaseDir, baseExe, o), Side(o.CandDir, candExe, o),
-            ct).ConfigureAwait(false);
+        try
+        {
+            var assemblyName = Path.GetFileNameWithoutExtension(o.BenchmarkProject);
+            var baseExe = Path.Combine(baseDir, assemblyName + ".dll");
+            var candExe = Path.Combine(candDir, assemblyName + ".dll");
+
+            return await Interleaver.RunAsync(
+                o.Rounds, o.Warmup,
+                Side(o.BaseDir, baseExe, o), Side(o.CandDir, candExe, o),
+                ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Every measurement builds two full Release outputs. This tool is meant to be
+            // invoked repeatedly in an unattended optimization loop, so leaving these behind
+            // would leak gigabytes of /tmp per night — exactly what `doctor`'s disk-space
+            // check exists to catch, and exactly what would trip it.
+            DeleteQuietly(baseDir);
+            DeleteQuietly(candDir);
+        }
     }
 
-    /// <summary>Publishes the benchmark project to a scratch directory and returns its entry dll.</summary>
+    private static void DeleteQuietly(string dir)
+    {
+        try { Directory.Delete(dir, true); }
+        catch (IOException) { /* a leftover scratch dir is not worth failing a completed run over */ }
+        catch (UnauthorizedAccessException) { /* same */ }
+    }
+
+    /// <summary>
+    /// Publishes the benchmark project to a fresh scratch directory and returns it. The
+    /// caller owns this directory for the lifetime of the measurement and must delete it —
+    /// it survives across all rounds, so it cannot be cleaned up here.
+    /// </summary>
     private static async Task<string> BuildAsync(string worktree, MeasureOptions o, CancellationToken ct)
     {
         var outputDir = Path.Combine(
@@ -74,7 +101,7 @@ public static class Measurer
         if (!File.Exists(dll))
             throw new InvalidOperationException($"benchmark build produced no {assemblyName}.dll in {outputDir}");
 
-        return dll;
+        return outputDir;
     }
 
     private static RoundFunc Side(string worktree, string dll, MeasureOptions o) =>
@@ -97,6 +124,19 @@ public static class Measurer
 
                 if (o.InProcess) args.Add("--inProcess");
 
+                // The Runner's WORKING DIRECTORY is load-bearing for correctness, not a
+                // convenience for relative paths.
+                //
+                // BenchmarkDotNet's default toolchain does NOT execute the assembly named on
+                // the command line — that Main() only performs reflection-based discovery. To
+                // run a job it does a fresh `dotnet build` of the benchmark project it finds by
+                // searching UPWARD FROM THE PROCESS'S CURRENT WORKING DIRECTORY, and runs that.
+                //
+                // So `worktree` below is what decides which source tree is actually measured.
+                // Running both sides from a shared directory would make them rebuild the SAME
+                // project and measure identical code — every experiment would compare a worktree
+                // against itself, report "no significant improvement" forever, and look
+                // completely healthy while doing it. Do not "simplify" this.
                 var runner = new Runner(worktree, o.Timeout, o.Log);
                 var result = await runner.RunAsync("dotnet", args, ct).ConfigureAwait(false);
 
