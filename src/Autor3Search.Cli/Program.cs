@@ -14,6 +14,7 @@ public static class Program
             return parsed.Command switch
             {
                 "init" => await InitCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
+                "baseline" => await BaselineCommand.RunAsync(parsed, Console.Out, Console.Error, ct),
                 "version" => RunVersion(),
                 "" => Usage(),
                 _ => Unknown(parsed.Command),
