@@ -1,0 +1,23 @@
+autor3search-c#
+Copyright (c) 2026 Gal Be
+
+This product includes software ported from the Go projects listed below.
+The ports are hand-written C#; no Go source is redistributed.
+
+--------------------------------------------------------------------------------
+golang.org/x/perf
+Copyright (c) 2009 The Go Authors. All rights reserved.
+Licensed under the BSD 3-Clause License.
+https://cs.opensource.google/go/x/perf/+/master:LICENSE
+
+Ported: the AssumeNothing median summary and its confidence-interval warnings,
+as src/Autor3Search.Core/Bench/MedianEstimate.cs.
+
+--------------------------------------------------------------------------------
+github.com/aclements/go-moremath
+Copyright (c) 2015 Austin Clements. All rights reserved.
+Licensed under the BSD 3-Clause License.
+https://github.com/aclements/go-moremath/blob/master/LICENSE
+
+Ported: the two-sided Mann-Whitney U test, exact and normal-approximation paths,
+as src/Autor3Search.Core/Bench/MannWhitney.cs.
