@@ -100,24 +100,24 @@ public sealed class PipelineGateTests : IDisposable
         Assert.Equal(Reasons.NewFrozenFile, outcome.Verdict.Reason);
     }
 
-    // Restore rewrites the frozen file, so a manifest entry the walker can no longer
-    // see means the tree changed shape around it — the file is nominally restored but
-    // would not actually run.
-    /// <summary>A frozen file hidden behind a dot-prefixed directory fails with Reasons.MissingFrozenFile.</summary>
-    [Fact(Skip = "Under investigation — see 'Reachability of Reasons.MissingFrozenFile' in " +
-        "task-18-report.md. Moving the whole project directory relocates its .csproj, which " +
-        "trips the dependency gate (Reasons.DependencyChanged) before the manifest-agreement " +
-        "check this test targets is ever reached. Skipped rather than weakened so the original " +
-        "intent is visible pending a ruling on whether MissingFrozenFile's 'missing' direction " +
-        "is reachable at all given Freezer.Restore's self-healing recreate.")]
-    public async Task AFrozenFileHiddenFromDiscoveryFails()
+    // The frozen project's .csproj moves along with its directory, and a .csproj at a
+    // path the manifest does not recognise is a genuine dependency-surface change
+    // regardless of how it got there — this is the correct gate for this scenario, not
+    // Reasons.MissingFrozenFile. See Pipeline.EvalAsync's comment above the
+    // MissingFrozenFile check, and DiscovererTests.FrozenFilesEnumerateFromTheGivenProjectPathRegardlessOfHiddenAncestors,
+    // for why that direction is unreachable by construction: Discoverer.FrozenFiles
+    // enumerates from the fixed, baseline-recorded project path Freezer.Restore
+    // recreates, so a frozen file can never go missing from the walk that finds it.
+    /// <summary>Moving a frozen test project to a hidden directory fails with Reasons.DependencyChanged, not MissingFrozenFile.</summary>
+    [Fact]
+    public async Task AFrozenProjectMovedToAHiddenDirectoryFailsAsADependencyChange()
     {
         _h.MoveDirectory("tests/Demo.Tests", "tests/.hidden.Demo.Tests");
 
         var outcome = await _h.EvalAsync();
 
         Assert.Equal(VerdictStatus.Fail, outcome.Verdict.Status);
-        Assert.Equal(Reasons.MissingFrozenFile, outcome.Verdict.Reason);
+        Assert.Equal(Reasons.DependencyChanged, outcome.Verdict.Reason);
     }
 
     /// <summary>A code change that breaks the build crashes the run.</summary>

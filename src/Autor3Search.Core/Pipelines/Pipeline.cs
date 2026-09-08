@@ -147,6 +147,19 @@ public static class Pipeline
         //     entry MISSING from the walk means the tree changed shape around it — it
         //     is nominally restored but would not actually run, and the run would keep
         //     scoring against a benchmark set that no longer executes.
+        //
+        //     This direction is UNREACHABLE by construction under Discoverer.FrozenFiles'
+        //     current contract: Freezer.Restore unconditionally recreates every manifest
+        //     entry's full ancestor chain at its exact original, baseline-recorded path
+        //     (or throws, which an earlier gate catches), and FrozenFiles enumerates from
+        //     that same fixed project path — its dot/underscore/skip-list rules apply only
+        //     to subdirectories reached by recursion, never to the root path it is handed.
+        //     There is no way to hide a frozen file from a walk that starts exactly where
+        //     the file provably still is. It becomes a live gate again the moment
+        //     FrozenFiles' contract changes to a root walk applying those skip rules to the
+        //     whole path — which is exactly what the Go tool this ports from does. Kept
+        //     deliberately as defence-in-depth against that contract changing underneath
+        //     it, not left behind by accident.
         var frozenProjects = o.Baseline.FrozenProjects;
         var present = new HashSet<string>(
             Discoverer.FrozenFiles(o.Root, frozenProjects, o.Config.Unfreeze), StringComparer.Ordinal);

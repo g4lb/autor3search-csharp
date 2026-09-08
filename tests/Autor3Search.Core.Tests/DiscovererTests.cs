@@ -258,6 +258,29 @@ public sealed class DiscovererTests : IDisposable
         Assert.DoesNotContain("tests/Scratch.cs", frozen);
     }
 
+    // This is the invariant Pipeline's Reasons.MissingFrozenFile check relies on to be
+    // unreachable: Freezer.Restore always recreates a manifest entry at its exact
+    // original, baseline-recorded project path, and FrozenFiles is handed that same
+    // fixed path here — the dot/underscore skip rules in EnumerateFiles apply only to
+    // subdirectories reached by recursion, never to the root path passed in. So a
+    // frozen file can never be hidden from the walk that finds it. If FrozenFiles is
+    // ever changed to walk the repository root itself (applying skip rules along the
+    // whole path, as the Go tool this ports from does), this test fails loudly and
+    // points straight at the MissingFrozenFile check in Pipeline.EvalAsync, which then
+    // starts mattering.
+    /// <summary>FrozenFiles enumerates from the given project path regardless of dot- or underscore-prefixed ancestors.</summary>
+    [Fact]
+    public void FrozenFilesEnumerateFromTheGivenProjectPathRegardlessOfHiddenAncestors()
+    {
+        Write(".hidden/Demo.Tests/Demo.Tests.csproj", XunitProject);
+        Write(".hidden/Demo.Tests/ATests.cs", "class A {}");
+
+        var frozen = Discoverer.FrozenFiles(_root, [".hidden/Demo.Tests/Demo.Tests.csproj"], []);
+
+        Assert.Contains(".hidden/Demo.Tests/Demo.Tests.csproj", frozen);
+        Assert.Contains(".hidden/Demo.Tests/ATests.cs", frozen);
+    }
+
     /// <summary>Frozen file paths use forward slashes and are sorted ordinally.</summary>
     [Fact]
     public void FrozenPathsUseForwardSlashesAndAreSorted()
