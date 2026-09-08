@@ -280,4 +280,94 @@ public sealed class DiscovererTests : IDisposable
         Assert.Contains("packages.lock.json", Discoverer.DependencyFiles);
         Assert.Contains("nuget.config", Discoverer.DependencyFiles);
     }
+
+    // Regression for a bug found in code review: OwningProject compared a candidate's
+    // Directory length against the incumbent's ProjectPath length, so a nested project
+    // lost to its parent whenever the parent's file name outran the child's directory —
+    // exactly the case set up here.
+    /// <summary>A benchmark under a nested project resolves to that nested project, not its outer parent.</summary>
+    [Fact]
+    public void BenchmarksInANestedProjectResolveToTheNestedProjectNotItsParent()
+    {
+        Write("src/Demo.csproj", BenchProject);
+        Write("src/Sub/S.csproj", BenchProject);
+        Write("src/Sub/B.cs", """
+            using BenchmarkDotNet.Attributes;
+            namespace Demo.Sub;
+            public class Inner { [Benchmark] public void M() { } }
+            """);
+
+        var found = Discoverer.Benchmarks(_root);
+        var benchmark = Assert.Single(found);
+        Assert.Equal("src/Sub/S.csproj", benchmark.Project);
+    }
+
+    /// <summary>A benchmark declared inside a symlinked directory is not discovered through the link.</summary>
+    [Fact]
+    public void BenchmarksAreNotDiscoveredThroughASymlinkedDirectory()
+    {
+        if (!SymlinkSupported()) return;
+
+        Write("bench/Bench.csproj", BenchProject);
+
+        // The real directory lives OUTSIDE the scanned tree entirely, so the only way
+        // Discoverer could ever see it is by following the symlink placed inside _root.
+        var real = Path.Combine(Path.GetTempPath(), $"a3s-disc-symlink-target-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(real);
+        try
+        {
+            File.WriteAllText(Path.Combine(real, "Ghost.cs"), """
+                using BenchmarkDotNet.Attributes;
+                public class Ghost { [Benchmark] public void M() { } }
+                """);
+
+            var link = Path.Combine(_root, "bench", "linked");
+            Directory.CreateSymbolicLink(link, real);
+
+            Assert.Empty(Discoverer.Benchmarks(_root));
+        }
+        finally
+        {
+            if (Directory.Exists(real)) Directory.Delete(real, true);
+        }
+    }
+
+    /// <summary>A malformed .csproj classifies as neither test nor benchmark, and discovery does not throw.</summary>
+    [Fact]
+    public void MalformedProjectFilesClassifyAsNeitherAndDoNotThrow()
+    {
+        Write("bad/Bad.csproj", "<Project><Unclosed>");
+
+        var p = Discoverer.Projects(_root).Single();
+        Assert.False(p.IsTestProject);
+        Assert.False(p.IsBenchmarkProject);
+    }
+
+    /// <summary>
+    /// Probes whether this platform/process can create symbolic links. On Windows CI,
+    /// <see cref="File.CreateSymbolicLink(string, string)"/> needs Developer Mode or
+    /// elevation and throws <see cref="UnauthorizedAccessException"/> otherwise; Linux
+    /// and macOS runners always support it and prove the refusal behavior.
+    /// </summary>
+    private static bool SymlinkSupported()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"a3s-disc-symlink-probe-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var target = Path.Combine(dir, "target.txt");
+            File.WriteAllBytes(target, "x"u8.ToArray());
+            var link = Path.Combine(dir, "link.txt");
+            File.CreateSymbolicLink(link, target);
+            return true;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            return false;
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
 }

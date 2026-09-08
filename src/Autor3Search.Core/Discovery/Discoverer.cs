@@ -36,7 +36,7 @@ public static class Discoverer
     /// is a human supply-chain decision, and it changes WHAT is measured rather than
     /// how fast it runs.
     /// </summary>
-    public static readonly string[] DependencyFiles =
+    public static readonly IReadOnlyList<string> DependencyFiles =
     [
         "Directory.Packages.props",
         "Directory.Build.props",
@@ -227,15 +227,32 @@ public static class Discoverer
     private static string Relative(string root, string absolute) =>
         Paths.ToSlash(Path.GetRelativePath(root, absolute));
 
+    /// <summary>
+    /// The most deeply nested project containing a file: longest matching directory wins.
+    ///
+    /// The winning DIRECTORY length is tracked separately from the returned PROJECT PATH.
+    /// Comparing a candidate's directory length against the incumbent's project-path length
+    /// would compare two unrelated strings — a nested project would lose to its parent
+    /// whenever the parent's file name is longer than the child's directory, which is the
+    /// common case ("src/Demo.csproj" is 15 characters, "src/Sub" is 7).
+    /// </summary>
     private static string OwningProject(IReadOnlyList<DiscoveredProject> projects, string fileRel)
     {
-        string best = "";
+        var best = "";
+        var bestDirectoryLength = -1;
+
         foreach (var p in projects)
         {
             var prefix = p.Directory.Length == 0 ? "" : p.Directory + "/";
             if (!fileRel.StartsWith(prefix, StringComparison.Ordinal)) continue;
-            if (p.Directory.Length >= best.Length) best = p.ProjectPath;
+
+            if (p.Directory.Length >= bestDirectoryLength)
+            {
+                bestDirectoryLength = p.Directory.Length;
+                best = p.ProjectPath;
+            }
         }
+
         return best;
     }
 }
