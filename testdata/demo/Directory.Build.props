@@ -1,0 +1,14 @@
+<Project>
+  <!--
+    Deliberately empty, and deliberately present.
+
+    MSBuild walks UP from each project looking for Directory.Build.props and stops at
+    the first one it finds. Without this file the walk would reach the repository root
+    and apply the harness's own settings to the fixture: TreatWarningsAsErrors,
+    GenerateDocumentationFile and a pinned TargetFramework. The fixture would then fail
+    to build over missing XML doc comments.
+
+    The fixture's whole job is to be a plain, ordinary consumer repository, exactly like
+    the repositories this tool is pointed at in the wild. This file is what keeps it one.
+  -->
+</Project>
