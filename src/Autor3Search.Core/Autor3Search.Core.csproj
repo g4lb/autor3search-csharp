@@ -11,4 +11,8 @@
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Autor3Search.Core.Tests" />
+  </ItemGroup>
+
 </Project>

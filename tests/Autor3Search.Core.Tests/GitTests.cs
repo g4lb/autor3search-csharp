@@ -1,3 +1,4 @@
+using Autor3Search.Core;
 using Autor3Search.Core.Processes;
 using Autor3Search.Core.SourceControl;
 using Xunit;
@@ -48,66 +49,14 @@ public sealed class GitTests : IDisposable
         Directory.CreateDirectory(sub);
 
         var root = await Git.RootAsync(sub, CancellationToken.None);
-        Assert.Equal(RealPath(_repo), RealPath(root));
-    }
 
-    private static readonly char[] SeparatorChars =
-        [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar];
-
-    /// <summary>
-    /// A minimal <c>realpath(3)</c>: resolves every symlink in <paramref name="path"/>,
-    /// including one sitting in an ANCESTOR directory rather than at the leaf — macOS's
-    /// temp directory lives under /var, itself a symlink to /private/var, which git
-    /// resolves but <see cref="Path.GetFullPath(string)"/> does not. Segments are
-    /// processed from a work queue, not a single left-to-right pass, because a
-    /// symlink's OWN target can reintroduce further unresolved segments — including
-    /// further ancestor symlinks — that must be re-walked from wherever they land.
-    /// </summary>
-    private static string RealPath(string path)
-    {
-        var fullPath = Path.GetFullPath(path);
-        var root = Path.GetPathRoot(fullPath) ?? string.Empty;
-        var resolvedRoot = root.Length > 0 ? root.TrimEnd(SeparatorChars) : string.Empty;
-        if (resolvedRoot.Length == 0 && Path.DirectorySeparatorChar == '/') resolvedRoot = "/";
-
-        var resolved = resolvedRoot;
-        var remaining = new List<string>(
-            fullPath[root.Length..].Split(SeparatorChars, StringSplitOptions.RemoveEmptyEntries));
-
-        var hops = 0;
-        while (remaining.Count > 0)
-        {
-            if (++hops > 200) break;
-
-            var segment = remaining[0];
-            remaining.RemoveAt(0);
-            if (segment.Length == 0 || segment == ".") continue;
-
-            var candidate = resolved.Length == 0 ? segment : Path.Combine(resolved, segment);
-            var target = Directory.Exists(candidate)
-                ? new DirectoryInfo(candidate).LinkTarget
-                : File.Exists(candidate) ? new FileInfo(candidate).LinkTarget : null;
-
-            if (target is null)
-            {
-                resolved = candidate;
-                continue;
-            }
-
-            if (Path.IsPathFullyQualified(target))
-            {
-                var targetRoot = Path.GetPathRoot(target) ?? string.Empty;
-                resolved = targetRoot.Length > 0 ? targetRoot.TrimEnd(SeparatorChars) : string.Empty;
-                if (resolved.Length == 0 && Path.DirectorySeparatorChar == '/') resolved = "/";
-                remaining.InsertRange(0, target[targetRoot.Length..].Split(SeparatorChars, StringSplitOptions.RemoveEmptyEntries));
-            }
-            else
-            {
-                remaining.InsertRange(0, target.Split(SeparatorChars, StringSplitOptions.RemoveEmptyEntries));
-            }
-        }
-
-        return resolved;
+        // Git.RootAsync returns git's own canonical, symlink-resolved form (see its
+        // XML doc); Path.GetFullPath on _repo does not resolve symlinks, so on macOS
+        // (/var -> /private/var) the two need reconciling through the same realpath
+        // algorithm Paths.RepoHash relies on, rather than a second copy of it here.
+        Assert.Equal(
+            Paths.ResolveRealPath(Path.GetFullPath(_repo)),
+            Paths.ResolveRealPath(Path.GetFullPath(root)));
     }
 
     /// <summary>HEAD resolves to a full 40-character lowercase hex SHA.</summary>

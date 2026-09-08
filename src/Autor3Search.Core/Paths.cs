@@ -139,8 +139,19 @@ public static class Paths
     /// left-to-right pass because a symlink's OWN target can reintroduce further
     /// unresolved segments — including further ancestor symlinks — that must be
     /// re-walked from wherever they land, not appended past as if already resolved.
+    ///
+    /// If resolution exceeds its bound on total work (a pathological symlink cycle,
+    /// or an implausibly deep tree), this returns <paramref name="fullPath"/>
+    /// UNCHANGED rather than a partially-resolved, truncated path — a truncated path
+    /// would look like a valid canonical form and silently be the WRONG one, which is
+    /// worse than not canonicalising at all. <see cref="CanonicalizeIfExists"/> already
+    /// falls back to the literal input when the path doesn't exist or resolution
+    /// throws; this is the same fallback for the same reason.
+    ///
+    /// Internal, not private, only so <c>GitTests</c> can call the identical algorithm
+    /// rather than keep a second copy that could silently drift from this one.
     /// </summary>
-    private static string ResolveRealPath(string fullPath)
+    internal static string ResolveRealPath(string fullPath)
     {
         var root = Path.GetPathRoot(fullPath) ?? string.Empty;
         var resolvedRoot = root.Length > 0 ? root.TrimEnd(SeparatorChars) : string.Empty;
@@ -150,12 +161,15 @@ public static class Paths
         var remaining = new List<string>(
             fullPath[root.Length..].Split(SeparatorChars, StringSplitOptions.RemoveEmptyEntries));
 
-        var hops = 0;
+        // Bounds total resolution WORK (one per queue-pop), not distinct symlinks
+        // followed — a symlink target can reinsert further segments, so this is not
+        // simply "how many links deep". Exceeding it falls back to the literal input
+        // (see the fallback note in the method summary) rather than returning
+        // whatever is resolved so far, which would be a silently wrong truncation.
+        var steps = 0;
         while (remaining.Count > 0)
         {
-            // A pathological symlink cycle must not hang the tool; give up and return
-            // whatever is resolved so far rather than loop forever.
-            if (++hops > 200) break;
+            if (++steps > 200) return fullPath;
 
             var segment = remaining[0];
             remaining.RemoveAt(0);
