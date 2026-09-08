@@ -33,6 +33,20 @@ internal static partial class BaselineCommand
             return 2;
         }
 
+        // "." and ".." pass the character check but are path segments, not names.
+        // StateDir combines them onto the state root, so ".." resolves ABOVE the
+        // per-repository hash directory into the state home shared by every repository
+        // on the machine — two unrelated repos would then collide on one baseline,
+        // manifest and frozen store — and "." collapses every tag in a repository into
+        // a single directory.
+        if (tag is "." or "..")
+        {
+            stderr.WriteLine(
+                $"tag \"{tag}\" is a path segment, not a name. It would place this run's state " +
+                "outside its own directory and collide with other runs. Pick a real tag.");
+            return 2;
+        }
+
         var start = Path.GetFullPath(args.GetString("C") ?? Directory.GetCurrentDirectory());
         var repo = await Git.RootAsync(start, ct);
 
@@ -47,6 +61,22 @@ internal static partial class BaselineCommand
         var config = RunConfig.Load(configPath);
 
         var store = new StateStore(repo, tag);
+
+        // Belt-and-braces: the tag was already validated above, but this guards
+        // against a future change to the regex, or to StateStore/Paths, silently
+        // reintroducing a state directory that escapes this repository's own state
+        // root — which would let one run's baseline collide with another repository's.
+        var repoStateRoot = Path.GetFullPath(Path.Combine(Paths.StateHome(), Paths.RepoHash(repo)));
+        var resolvedStoreRoot = Path.GetFullPath(store.Root);
+        if (!resolvedStoreRoot.StartsWith(repoStateRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        {
+            stderr.WriteLine(
+                $"internal error: the state directory for tag \"{tag}\" ({resolvedStoreRoot}) does " +
+                $"not lie under this repository's own state directory ({repoStateRoot}). Refusing " +
+                "to proceed rather than risk touching another repository's or run's state.");
+            return 2;
+        }
+
         if (store.Exists)
         {
             stderr.WriteLine(
@@ -59,7 +89,10 @@ internal static partial class BaselineCommand
         var branch = StateStore.BranchForTag(tag);
         if (await Git.BranchExistsAsync(repo, branch, ct))
         {
-            stderr.WriteLine($"branch {branch} already exists. Pick a different tag.");
+            stderr.WriteLine(
+                $"branch {branch} already exists. It may be left over from a partial baseline " +
+                $"failure — if so, remove it with `git branch -D {branch}` and try again. " +
+                "Otherwise, pick a different tag.");
             return 2;
         }
 
@@ -86,35 +119,68 @@ internal static partial class BaselineCommand
         }
 
         var commit = await Git.HeadCommitAsync(repo, ct);
+        var originalBranch = await Git.CurrentBranchAsync(repo, ct);
 
         Directory.CreateDirectory(store.Root);
         await Git.CreateBranchAsync(repo, branch, ct);
 
-        Manifest manifest;
+        // Git.CreateBranchAsync is `git checkout -b`, so it both creates AND checks
+        // out the run branch. From here until the baseline is saved, any failure must
+        // not strand the repository on that branch: it would leave an orphaned branch
+        // behind, and a same-tag retry would then hit "branch already exists" instead
+        // of the real problem. So everything below runs under a try/finally that puts
+        // the repository back exactly as it was found on any failure — the tree was
+        // verified clean before the branch was created and the branch carries no
+        // commits of its own, so both operations are safe to run unconditionally.
+        var succeeded = false;
         try
         {
-            manifest = Freezer.Snapshot(repo, store.FrozenStorePath, frozenFiles);
+            Manifest manifest;
+            try
+            {
+                manifest = Freezer.Snapshot(repo, store.FrozenStorePath, frozenFiles);
+            }
+            catch (SymlinkRefusedException ex)
+            {
+                stderr.WriteLine(ex.Message);
+                return 2;
+            }
+
+            manifest.Save(store.ManifestPath);
+
+            await Git.AddWorktreeAsync(repo, store.WorktreePath, commit, ct);
+
+            store.SaveBaseline(new Baseline
+            {
+                Tag = tag,
+                Commit = commit,
+                MeasureCommit = commit,
+                ConfigSha256 = Freezer.HashFile(configPath),
+                CreatedAt = DateTimeOffset.UtcNow,
+                FrozenProjects = frozenProjects,
+                BenchmarkProject = config.BenchmarkProject,
+            });
+
+            succeeded = true;
         }
-        catch (SymlinkRefusedException ex)
+        finally
         {
-            stderr.WriteLine(ex.Message);
-            return 2;
+            if (!succeeded)
+            {
+                // Best-effort, and deliberately swallows its own errors: this runs
+                // from a failure path, and an error from cleanup must never mask the
+                // real reason baseline failed.
+                try
+                {
+                    await Git.CheckoutBranchAsync(repo, originalBranch, ct);
+                    await Git.DeleteBranchAsync(repo, branch, ct);
+                }
+                catch
+                {
+                    // Swallowed deliberately — see comment above.
+                }
+            }
         }
-
-        manifest.Save(store.ManifestPath);
-
-        await Git.AddWorktreeAsync(repo, store.WorktreePath, commit, ct);
-
-        store.SaveBaseline(new Baseline
-        {
-            Tag = tag,
-            Commit = commit,
-            MeasureCommit = commit,
-            ConfigSha256 = Freezer.HashFile(configPath),
-            CreatedAt = DateTimeOffset.UtcNow,
-            FrozenProjects = frozenProjects,
-            BenchmarkProject = config.BenchmarkProject,
-        });
 
         stdout.WriteLine($"run tag        {tag}");
         stdout.WriteLine($"branch         {branch}  (checked out)");

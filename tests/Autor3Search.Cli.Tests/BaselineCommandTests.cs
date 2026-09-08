@@ -183,4 +183,102 @@ public sealed class BaselineCommandTests : IDisposable
         Assert.Contains("autor3search-csharp/sep8", output);
         Assert.Contains("frozen", output, StringComparison.OrdinalIgnoreCase);
     }
+
+    // ".." passes the character-class regex but is a path segment: StateDir combines
+    // it onto the state root, so it resolves ABOVE the per-repository hash directory
+    // into the state home shared by every repository on the machine.
+    /// <summary>baseline refuses ".." as a tag and creates no state directory for it.</summary>
+    [Fact]
+    public async Task BaselineRefusesADotDotTag()
+    {
+        var (code, _, err) = await RunBaseline("-tag", "..");
+
+        Assert.Equal(2, code);
+        Assert.Contains("path segment", err, StringComparison.OrdinalIgnoreCase);
+        Assert.False(Directory.Exists(_stateHome));
+    }
+
+    // "." passes the same regex and would collapse every tag in a repository into one
+    // directory.
+    /// <summary>baseline refuses "." as a tag and creates no state directory for it.</summary>
+    [Fact]
+    public async Task BaselineRefusesADotTag()
+    {
+        var (code, _, err) = await RunBaseline("-tag", ".");
+
+        Assert.Equal(2, code);
+        Assert.Contains("path segment", err, StringComparison.OrdinalIgnoreCase);
+        Assert.False(Directory.Exists(_stateHome));
+    }
+
+    // Git.CreateBranchAsync (`git checkout -b`) both creates and checks out the run
+    // branch. A failure later in the same command — here, freezing a file that turns
+    // out to be a symlink — must not strand the repository on that branch: baseline
+    // must check the original branch back out and delete the run branch, so a
+    // same-tag retry after fixing the problem is not blocked by "branch already
+    // exists" telling the user the wrong thing.
+    /// <summary>
+    /// A failure while freezing checks the original branch back out and deletes the
+    /// stray run branch, rather than leaving the repository stranded on it.
+    /// </summary>
+    [Fact]
+    public async Task BaselineCleansUpTheRunBranchWhenFreezingFails()
+    {
+        if (!SymlinkSupported()) return;
+
+        var target = Path.Combine(_repo, "outside.cs");
+        File.WriteAllText(target, "elsewhere");
+
+        var link = Path.Combine(_repo, "tests", "Demo.Tests", "WordCountTests.cs");
+        File.Delete(link);
+        File.CreateSymbolicLink(link, target);
+
+        // Commit the swap so the tree is clean again — otherwise baseline would
+        // refuse at the dirty-tree guard rather than reach freezing.
+        Git("add", "-A");
+        Git("commit", "-q", "-m", "swap a frozen file for a symlink");
+
+        var (code, _, err) = await RunBaseline("-tag", "sep8");
+
+        Assert.Equal(2, code);
+        Assert.Contains("symbolic link", err, StringComparison.OrdinalIgnoreCase);
+
+        Assert.Equal("main",
+            await Core.SourceControl.Git.CurrentBranchAsync(_repo, CancellationToken.None));
+        Assert.False(await Core.SourceControl.Git.BranchExistsAsync(
+            _repo, "autor3search-csharp/sep8", CancellationToken.None));
+    }
+
+    private void Git(params string[] args)
+    {
+        var runner = new Runner(_repo, TimeSpan.FromMinutes(2), null);
+        var r = runner.RunAsync("git", args, CancellationToken.None).GetAwaiter().GetResult();
+        if (!r.OK) throw new InvalidOperationException($"git {string.Join(' ', args)}: {r.Tail(10)}");
+    }
+
+    // Matches the probe used elsewhere in this repository (e.g. FreezerTests):
+    // symlink creation can fail for permission reasons on some machines (notably
+    // Windows without developer mode), and a test that depends on it must skip rather
+    // than fail in that environment.
+    private static bool SymlinkSupported()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"a3s-baseline-symlink-probe-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var target = Path.Combine(dir, "target.txt");
+            File.WriteAllBytes(target, "x"u8.ToArray());
+            var link = Path.Combine(dir, "link.txt");
+            File.CreateSymbolicLink(link, target);
+            return true;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            return false;
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        }
+    }
 }

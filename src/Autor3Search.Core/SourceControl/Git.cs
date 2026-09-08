@@ -98,6 +98,10 @@ public static class Git
     public static async Task CreateBranchAsync(string dir, string branch, CancellationToken ct) =>
         await RunCheckedAsync(dir, ct, "checkout", "-b", branch).ConfigureAwait(false);
 
+    /// <summary>Checks out an existing branch in the main working tree.</summary>
+    public static async Task CheckoutBranchAsync(string dir, string branch, CancellationToken ct) =>
+        await RunCheckedAsync(dir, ct, "checkout", branch).ConfigureAwait(false);
+
     /// <summary>Adds a detached worktree pinned at a commit.</summary>
     public static async Task AddWorktreeAsync(
         string dir, string worktreePath, string commit, CancellationToken ct) =>
@@ -112,4 +116,8 @@ public static class Git
     /// <summary>Removes a worktree registration, tolerating one already gone.</summary>
     public static async Task RemoveWorktreeAsync(string dir, string worktreePath, CancellationToken ct) =>
         await RunAsync(dir, ct, "worktree", "remove", "--force", worktreePath).ConfigureAwait(false);
+
+    /// <summary>Force-deletes a branch, tolerating one that does not exist.</summary>
+    public static async Task DeleteBranchAsync(string dir, string branch, CancellationToken ct) =>
+        await RunAsync(dir, ct, "branch", "-D", branch).ConfigureAwait(false);
 }
