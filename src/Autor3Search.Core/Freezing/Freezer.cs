@@ -73,7 +73,9 @@ public static class Freezer
             if (!File.Exists(stored))
             {
                 throw new StoreTamperedException(
-                    $"the frozen copy of {rel} is missing from {storeDir}");
+                    $"the frozen copy of {rel} is missing from {storeDir}. The frozen " +
+                    "reference this run scores against can no longer be trusted — start a " +
+                    "fresh baseline with `autor3search-csharp baseline`.");
             }
 
             // Verify the reference BEFORE trusting it. If the store was rewritten, the
@@ -85,7 +87,9 @@ public static class Freezer
             if (!string.Equals(storedHash, expectedHash, StringComparison.Ordinal))
             {
                 throw new StoreTamperedException(
-                    $"the frozen copy of {rel} no longer matches its recorded hash");
+                    $"the frozen copy of {rel} no longer matches its recorded hash. The " +
+                    "frozen reference this run scores against can no longer be trusted — " +
+                    "start a fresh baseline with `autor3search-csharp baseline`.");
             }
 
             var abs = Path.Combine(repoRoot, Paths.FromSlash(rel));
@@ -114,14 +118,24 @@ public static class Freezer
     /// Both halves matter. A symlinked FILE would have Restore write through it to a
     /// path outside the repository. A symlinked DIRECTORY does the same thing one
     /// level up and is easier to miss.
+    ///
+    /// The leaf check reads <see cref="FileSystemInfo.LinkTarget"/> directly rather than
+    /// gating on <see cref="FileSystemInfo.Exists"/>: Exists follows the link to its
+    /// target and, for a FileInfo, is false when that target is a directory (e.g. a
+    /// frozen path replaced with `ln -s /etc tests/A.cs`) — gating on it would let a
+    /// directory-resolving symlink slip past as "not a link" and fail later with an
+    /// unrelated IOException instead of SymlinkRefusedException. LinkTarget itself is
+    /// populated from an lstat of the path itself, so it reports the link regardless of
+    /// what — or whether anything — it resolves to, and is null for an ordinary missing
+    /// path (nothing to lstat).
     /// </summary>
     private static void RefuseLinkOnPath(string repoRoot, string absolutePath, string rel)
     {
-        var info = new FileInfo(absolutePath);
-        if (info.Exists && info.LinkTarget is not null)
+        var linkTarget = new FileInfo(absolutePath).LinkTarget;
+        if (linkTarget is not null)
         {
             throw new SymlinkRefusedException(
-                $"{rel} is a symbolic link (to {info.LinkTarget}) — frozen files must be " +
+                $"{rel} is a symbolic link (to {linkTarget}) — frozen files must be " +
                 "regular files, so that restoring them cannot write outside the repository");
         }
 

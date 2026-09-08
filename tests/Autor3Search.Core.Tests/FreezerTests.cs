@@ -150,6 +150,47 @@ public sealed class FreezerTests : IDisposable
         Assert.Throws<SymlinkRefusedException>(() => Freezer.Restore(_root, _store, m));
     }
 
+    // A frozen FILE path can be replaced with a symlink whose target is a DIRECTORY
+    // (e.g. `ln -s /etc tests/A.cs`). FileInfo.Exists is false for such a path (its
+    // target isn't a file), so a leaf check gated on Exists would skip it entirely and
+    // let it fail later as an unrelated IOException instead of SymlinkRefusedException —
+    // and the exception type is load-bearing: the pipeline maps SymlinkRefusedException
+    // to a FAIL verdict with an explanatory results.tsv row, while an IOException
+    // propagates as a harness malfunction that aborts the run and records nothing.
+    /// <summary>Restore refuses a frozen path replaced with a symlink that resolves to a directory.</summary>
+    [Fact]
+    public void RestoreRefusesASymlinkResolvingToADirectory()
+    {
+        if (!SymlinkSupported()) return;
+
+        Write("tests/A.cs", "original");
+        var m = Freezer.Snapshot(_root, _store, ["tests/A.cs"]);
+
+        var abs = Path.Combine(_root, "tests", "A.cs");
+        var targetDir = Path.Combine(_root, "somedir");
+        Directory.CreateDirectory(targetDir);
+        File.Delete(abs);
+        Directory.CreateSymbolicLink(abs, targetDir);
+
+        Assert.Throws<SymlinkRefusedException>(() => Freezer.Restore(_root, _store, m));
+    }
+
+    /// <summary>Snapshot refuses a frozen path that is a symlink resolving to a directory.</summary>
+    [Fact]
+    public void SnapshotRefusesASymlinkResolvingToADirectory()
+    {
+        if (!SymlinkSupported()) return;
+
+        var targetDir = Path.Combine(_root, "somedir");
+        Directory.CreateDirectory(targetDir);
+        var link = Path.Combine(_root, "tests", "A.cs");
+        Directory.CreateDirectory(Path.GetDirectoryName(link)!);
+        Directory.CreateSymbolicLink(link, targetDir);
+
+        Assert.Throws<SymlinkRefusedException>(
+            () => Freezer.Snapshot(_root, _store, ["tests/A.cs"]));
+    }
+
     // The frozen copy is the reference the run scores against. If it was rewritten,
     // no honest recovery exists short of a new baseline.
     /// <summary>Restore refuses a stored reference copy whose bytes no longer match its recorded hash.</summary>

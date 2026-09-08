@@ -23,6 +23,15 @@ public sealed class Manifest
     /// System.Text.Json does not serialize private fields, and IncludeFields covers
     /// only PUBLIC fields — so the private-field form round-trips to an empty manifest,
     /// which would silently disable every freeze gate rather than fail loudly.
+    ///
+    /// The setter is public solely so System.Text.Json can populate this property on
+    /// deserialization; callers should otherwise treat it as read-only and mutate a
+    /// manifest only through <see cref="FromEntries"/>. It is deliberately NOT
+    /// <c>init</c>-only or <c>private set</c> — those read as safer, but a non-public
+    /// accessor here reintroduces exactly the class of serialization trap this type
+    /// exists to avoid: some System.Text.Json configurations silently skip a property
+    /// they cannot set, which would again round-trip to an empty, gate-disabling
+    /// manifest instead of failing loudly.
     /// </summary>
     [JsonPropertyName("files")]
     public Dictionary<string, string> Files { get; set; } = new(StringComparer.Ordinal);
