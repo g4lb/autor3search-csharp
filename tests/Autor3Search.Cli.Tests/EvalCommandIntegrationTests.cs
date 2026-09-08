@@ -52,13 +52,10 @@ public sealed class EvalCommandIntegrationTests : IDisposable
     /// Sets the BenchmarkDotNet job, optionally raises min_effect_pct, and pins the
     /// baseline. Must run before any eval.
     ///
-    /// The config edit is not committed: `init` gitignores the whole `.autor3search/`
-    /// directory with a `!.autor3search/config.yaml` negation, but git does not
-    /// descend into an ignored directory to honour a negation for a file inside it —
-    /// so config.yaml is never actually tracked here, and this edit is invisible to
-    /// `git status --porcelain` (and therefore to <c>baseline</c>'s dirty-tree gate)
-    /// either way. It still lands in the hashed config, because <c>baseline</c> hashes
-    /// the file on disk, not what git tracks.
+    /// The config edit is committed: `config.yaml` is genuinely tracked by git (`init`
+    /// un-ignores it under `.autor3search/*`), so an uncommitted edit to it makes the
+    /// tree dirty — and <c>baseline</c> correctly refuses a dirty tree. That refusal is
+    /// correct production behaviour; the test must satisfy it rather than work around it.
     /// </summary>
     private void PinBaseline(string job = "dry", double? minEffectPct = null)
     {
@@ -73,6 +70,8 @@ public sealed class EvalCommandIntegrationTests : IDisposable
         }
 
         File.WriteAllText(configPath, config);
+        RunGit(_repo, "add", "-A");
+        RunGit(_repo, "commit", "-q", "-m", "test setup: pin config for baseline");
 
         var baseline = BaselineCommand.RunAsync(
             Args.Parse(["baseline", "-C", _repo, "-tag", Tag]),
