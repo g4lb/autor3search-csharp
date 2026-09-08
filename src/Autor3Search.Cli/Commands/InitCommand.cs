@@ -248,7 +248,12 @@ internal static class InitCommand
 
         string[] wanted =
         [
-            ".autor3search/",
+            // ".autor3search/*", NOT ".autor3search/". Git cannot re-include a file whose
+            // PARENT DIRECTORY is excluded, so the directory form silently defeats the
+            // negation below and makes config.yaml — the one file here that humans own and
+            // are told to commit — permanently untrackable. The trailing /* excludes the
+            // directory's CONTENTS instead, which leaves the negation able to work.
+            ".autor3search/*",
             "!.autor3search/config.yaml",
             ResultsFile.RelativePath,
             ResultsFile.RunLogName,

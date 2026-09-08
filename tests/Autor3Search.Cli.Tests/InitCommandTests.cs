@@ -1,5 +1,6 @@
 using Autor3Search.Cli;
 using Autor3Search.Core.Configuration;
+using Autor3Search.Core.Processes;
 using Xunit;
 
 namespace Autor3Search.Cli.Tests;
@@ -70,6 +71,21 @@ public sealed class InitCommandTests : IDisposable
         return (code, stdout.ToString(), stderr.ToString());
     }
 
+    private void Git(params string[] args)
+    {
+        var runner = new Runner(_repo, TimeSpan.FromMinutes(2), null);
+        var r = runner.RunAsync("git", args, CancellationToken.None).GetAwaiter().GetResult();
+        if (!r.OK) throw new InvalidOperationException($"git {string.Join(' ', args)}: {r.Tail(10)}");
+    }
+
+    private string GitOutput(params string[] args)
+    {
+        var runner = new Runner(_repo, TimeSpan.FromMinutes(2), null);
+        var r = runner.RunAsync("git", args, CancellationToken.None).GetAwaiter().GetResult();
+        if (!r.OK) throw new InvalidOperationException($"git {string.Join(' ', args)}: {r.Tail(10)}");
+        return r.Stdout;
+    }
+
     /// <summary>A successful init writes config.yaml, program.md, and .gitignore entries.</summary>
     [Fact]
     public async Task InitWritesConfigProgramAndGitignoreEntries()
@@ -110,6 +126,35 @@ public sealed class InitCommandTests : IDisposable
 
         var gitignore = File.ReadAllText(Path.Combine(_repo, ".gitignore"));
         Assert.Contains("!.autor3search/config.yaml", gitignore);
+    }
+
+    /// <summary>
+    /// The generated .gitignore does not merely say config.yaml is un-ignored — it
+    /// genuinely IS trackable by git. A prior version used ".autor3search/" (the
+    /// directory form) rather than ".autor3search/*" (the contents form); git cannot
+    /// re-include a file whose parent directory is excluded, so that pattern silently
+    /// defeated the negation and made config.yaml permanently untrackable while still
+    /// looking correct as text. This test proves the property against git's own
+    /// behaviour (`git ls-files` after a real `git add -A`), not against the
+    /// .gitignore's source text, since the text alone cannot tell the two apart.
+    /// </summary>
+    [Fact]
+    public async Task ConfigYamlIsActuallyTrackableByGit()
+    {
+        WriteDemo();
+        Git("init", "-q");
+        Git("config", "user.name", "Test");
+        Git("config", "user.email", "test@example.com");
+        Git("config", "commit.gpgsign", "false");
+        Git("checkout", "-q", "-b", "main");
+
+        await RunInit();
+        Git("add", "-A");
+
+        var tracked = GitOutput("ls-files").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        Assert.Contains(".autor3search/config.yaml", tracked);
+        Assert.DoesNotContain(tracked, f => f.StartsWith(".autor3search/") && f != ".autor3search/config.yaml");
     }
 
     /// <summary>program.md names the discovered benchmarks and leaves no unsubstituted placeholder.</summary>
