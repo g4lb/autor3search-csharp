@@ -5,10 +5,23 @@ using Xunit;
 namespace Autor3Search.Core.Tests;
 
 /// <summary>
+/// Serialises test classes that measure wall-clock time. Real BenchmarkDotNet runs put
+/// whatever else the runner schedules alongside them straight into the numbers: left
+/// parallelizable, MeasurerIntegrationTests ran concurrently with RunnerTests spawning
+/// and killing process trees and with GitTests shelling out, which inflated a 42us
+/// baseline to 146us and inverted AFasterCandidateMeasuresFaster's comparison. A
+/// non-parallelizable collection does not run alongside ANY other collection, so
+/// measurement gets the machine to itself.
+/// </summary>
+[CollectionDefinition("Measurement", DisableParallelization = true)]
+public sealed class MeasurementCollection;
+
+/// <summary>
 /// Exercises <see cref="Measurer"/> end to end against two real copies of the demo
 /// fixture, with real builds and real BenchmarkDotNet runs.
 /// </summary>
 [Trait("Category", "Integration")]
+[Collection("Measurement")]
 public sealed class MeasurerIntegrationTests : IDisposable
 {
     private readonly string _baseDir;
