@@ -627,5 +627,5 @@ gated, and an agent is free to make code faster by making it wrong.
 MIT. Copyright (c) 2026 Gal Be.
 
 The Mann-Whitney U test and the median confidence-interval estimator are hand-written C#
-ports of `golang.org/x/perf` and `github.com/aclements/go-moremath`, both BSD 3-Clause. See
-[NOTICE](NOTICE).
+ports of third-party implementations licensed under BSD 3-Clause. [NOTICE](NOTICE) carries
+their copyright notices in full, as that license requires.

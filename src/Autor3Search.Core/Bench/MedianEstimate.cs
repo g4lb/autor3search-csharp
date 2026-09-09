@@ -15,8 +15,8 @@ public sealed record MedianSummary(
 
 /// <summary>
 /// Median summary with a distribution-free confidence interval from binomial order
-/// statistics. Ported from golang.org/x/perf/benchmath's AssumeNothing summary; see
-/// NOTICE for attribution.
+/// statistics. Ported from a third-party BSD 3-Clause implementation of the same
+/// distribution-free summary; see NOTICE for the attribution.
 /// </summary>
 public static class MedianEstimate
 {

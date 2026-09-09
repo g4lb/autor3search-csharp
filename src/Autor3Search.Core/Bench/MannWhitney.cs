@@ -16,9 +16,8 @@ public sealed record UTestResult(
     IReadOnlyList<string> Warnings);
 
 /// <summary>
-/// Two-sided Mann-Whitney U test (rank-sum), ported from
-/// github.com/aclements/go-moremath/stats as used by golang.org/x/perf/benchmath.
-/// See NOTICE for attribution.
+/// Two-sided Mann-Whitney U test (rank-sum), ported from a third-party BSD 3-Clause
+/// implementation; see NOTICE for the attribution.
 ///
 /// Distribution-free on purpose: benchmark timings are skewed and heavy-tailed, and a
 /// t-test's normality assumption does not hold for them.

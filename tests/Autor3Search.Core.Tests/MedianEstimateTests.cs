@@ -24,7 +24,7 @@ public class MedianEstimateTests
 
     // At 95% confidence a distribution-free interval needs 6 observations: the
     // tightest available bound is P(X = 0) = 1/2^n, which must be <= 0.025.
-    // This is benchmath's own warning, surfaced rather than swallowed.
+    // The estimator warns rather than swallowing this case.
     /// <summary>Fewer than six observations cannot support a bounded 95% confidence interval.</summary>
     [Theory]
     [InlineData(2)]
