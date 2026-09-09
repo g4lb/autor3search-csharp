@@ -18,6 +18,21 @@ public sealed class PipelineGateTests : IDisposable
     /// <summary>Disposes the harness, restoring the state-home environment variable.</summary>
     public void Dispose() => _h.Dispose();
 
+    // Several gates below sit behind a full `dotnet build` and `dotnet test` of the
+    // fixture, so an earlier stage failing — a build race under parallel test
+    // execution, a timeout — surfaces here as the wrong verdict rather than as the
+    // gate under test. Two bare Assert.Equal calls report only "expected
+    // baseline_tampered, got build" and discard the verdict message explaining why,
+    // which is precisely the message needed to tell a real regression apart from
+    // infrastructure noise. Assert both fields together and carry the message into
+    // the failure, so an intermittent failure stays diagnosable from a CI log alone.
+    private static void AssertGate(EvalOutcome outcome, VerdictStatus status, string reason)
+    {
+        var v = outcome.Verdict;
+        Assert.True(v.Status == status && v.Reason == reason,
+            $"expected {status}/{reason} but got {v.Status}/{v.Reason}: {v.Message}");
+    }
+
     /// <summary>An edit outside the configured scope fails with Reasons.Scope.</summary>
     [Fact]
     public async Task AnEditOutsideScopeFails()
@@ -26,8 +41,7 @@ public sealed class PipelineGateTests : IDisposable
 
         var outcome = await _h.EvalAsync();
 
-        Assert.Equal(VerdictStatus.Fail, outcome.Verdict.Status);
-        Assert.Equal(Reasons.Scope, outcome.Verdict.Reason);
+        AssertGate(outcome, VerdictStatus.Fail, Reasons.Scope);
         Assert.Contains("unrelated/Thing.cs", outcome.Verdict.Message);
     }
 
@@ -39,8 +53,7 @@ public sealed class PipelineGateTests : IDisposable
 
         var outcome = await _h.EvalAsync();
 
-        Assert.Equal(VerdictStatus.Fail, outcome.Verdict.Status);
-        Assert.Equal(Reasons.DependencyChanged, outcome.Verdict.Reason);
+        AssertGate(outcome, VerdictStatus.Fail, Reasons.DependencyChanged);
     }
 
     /// <summary>A changed config.yaml fails the run with Reasons.ConfigChanged.</summary>
@@ -52,8 +65,7 @@ public sealed class PipelineGateTests : IDisposable
 
         var outcome = await _h.EvalAsync();
 
-        Assert.Equal(VerdictStatus.Fail, outcome.Verdict.Status);
-        Assert.Equal(Reasons.ConfigChanged, outcome.Verdict.Reason);
+        AssertGate(outcome, VerdictStatus.Fail, Reasons.ConfigChanged);
     }
 
     /// <summary>A weakened frozen test is silently restored rather than argued with.</summary>
@@ -79,8 +91,7 @@ public sealed class PipelineGateTests : IDisposable
 
         var outcome = await _h.EvalAsync();
 
-        Assert.Equal(VerdictStatus.Fail, outcome.Verdict.Status);
-        Assert.Equal(Reasons.NewFrozenFile, outcome.Verdict.Reason);
+        AssertGate(outcome, VerdictStatus.Fail, Reasons.NewFrozenFile);
         Assert.Contains("EasierTests.cs", outcome.Verdict.Message);
     }
 
@@ -96,8 +107,7 @@ public sealed class PipelineGateTests : IDisposable
 
         var outcome = await _h.EvalAsync();
 
-        Assert.Equal(VerdictStatus.Fail, outcome.Verdict.Status);
-        Assert.Equal(Reasons.NewFrozenFile, outcome.Verdict.Reason);
+        AssertGate(outcome, VerdictStatus.Fail, Reasons.NewFrozenFile);
     }
 
     // The frozen project's .csproj moves along with its directory, and a .csproj at a
@@ -116,8 +126,7 @@ public sealed class PipelineGateTests : IDisposable
 
         var outcome = await _h.EvalAsync();
 
-        Assert.Equal(VerdictStatus.Fail, outcome.Verdict.Status);
-        Assert.Equal(Reasons.DependencyChanged, outcome.Verdict.Reason);
+        AssertGate(outcome, VerdictStatus.Fail, Reasons.DependencyChanged);
     }
 
     /// <summary>A code change that breaks the build crashes the run.</summary>
@@ -128,8 +137,7 @@ public sealed class PipelineGateTests : IDisposable
 
         var outcome = await _h.EvalAsync();
 
-        Assert.Equal(VerdictStatus.Crash, outcome.Verdict.Status);
-        Assert.Equal(Reasons.Build, outcome.Verdict.Reason);
+        AssertGate(outcome, VerdictStatus.Crash, Reasons.Build);
     }
 
     // The whole point: an agent cannot buy speed with correctness.
@@ -147,8 +155,7 @@ public sealed class PipelineGateTests : IDisposable
 
         var outcome = await _h.EvalAsync();
 
-        Assert.Equal(VerdictStatus.Fail, outcome.Verdict.Status);
-        Assert.Equal(Reasons.Tests, outcome.Verdict.Reason);
+        AssertGate(outcome, VerdictStatus.Fail, Reasons.Tests);
     }
 
     /// <summary>A baseline worktree that moved off its recorded commit fails with Reasons.BaselineTampered.</summary>
@@ -159,8 +166,7 @@ public sealed class PipelineGateTests : IDisposable
 
         var outcome = await _h.EvalAsync();
 
-        Assert.Equal(VerdictStatus.Fail, outcome.Verdict.Status);
-        Assert.Equal(Reasons.BaselineTampered, outcome.Verdict.Reason);
+        AssertGate(outcome, VerdictStatus.Fail, Reasons.BaselineTampered);
     }
 
     /// <summary>A tampered frozen store fails with Reasons.FrozenTampered.</summary>
@@ -171,7 +177,6 @@ public sealed class PipelineGateTests : IDisposable
 
         var outcome = await _h.EvalAsync();
 
-        Assert.Equal(VerdictStatus.Fail, outcome.Verdict.Status);
-        Assert.Equal(Reasons.FrozenTampered, outcome.Verdict.Reason);
+        AssertGate(outcome, VerdictStatus.Fail, Reasons.FrozenTampered);
     }
 }
