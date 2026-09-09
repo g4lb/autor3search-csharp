@@ -78,12 +78,24 @@ public sealed class Runner(string workingDirectory, TimeSpan timeout, TextWriter
 
         using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
+        // Exit and end-of-output are DIFFERENT events, and only the first one is this
+        // process's to wait for. A redirected pipe reaches EOF when its last writer
+        // closes it, and `dotnet build` leaves persistent MSBuild worker nodes and the
+        // Roslyn compiler server running by design, holding inherited copies of these
+        // handles. Waiting on EOF therefore waits on processes that outlive the command
+        // and were never part of it. Subscribed before Start so a fast exit cannot be
+        // missed.
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        process.Exited += (_, _) => exited.TrySetResult();
+
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
+        var lastOutputTicks = DateTime.UtcNow.Ticks;
 
         process.OutputDataReceived += (_, e) =>
         {
             if (e.Data is null) return;
+            Interlocked.Exchange(ref lastOutputTicks, DateTime.UtcNow.Ticks);
             stdout.AppendLine(e.Data);
             log?.WriteLine(e.Data);
         };
@@ -91,9 +103,34 @@ public sealed class Runner(string workingDirectory, TimeSpan timeout, TextWriter
         process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data is null) return;
+            Interlocked.Exchange(ref lastOutputTicks, DateTime.UtcNow.Ticks);
             stderr.AppendLine(e.Data);
             log?.WriteLine(e.Data);
         };
+
+        // Bounded, because what draining ultimately waits on — every writer closing the
+        // pipe — is not under this process's control. Returns the instant the readers
+        // reach EOF, which is the normal case; when a surviving grandchild holds the
+        // pipe open, returns as soon as output falls quiet instead, so the pathological
+        // case costs milliseconds rather than the whole cap.
+        async Task DrainAsync()
+        {
+            var drain = Task.Run(process.WaitForExit);
+
+            // The process object is disposed on the way out from under a drain that
+            // never finished; observe the resulting fault so it is not unhandled.
+            _ = drain.ContinueWith(t => _ = t.Exception, TaskScheduler.Default);
+
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+
+            while (true)
+            {
+                if (await Task.WhenAny(drain, Task.Delay(50)).ConfigureAwait(false) == drain) return;
+
+                var quiet = DateTime.UtcNow.Ticks - Interlocked.Read(ref lastOutputTicks);
+                if (quiet > TimeSpan.TicksPerMillisecond * 500 || DateTime.UtcNow > deadline) return;
+            }
+        }
 
         try
         {
@@ -113,14 +150,17 @@ public sealed class Runner(string workingDirectory, TimeSpan timeout, TextWriter
         var timedOut = false;
         try
         {
-            await process.WaitForExitAsync(linked.Token).ConfigureAwait(false);
+            // Deliberately NOT WaitForExitAsync: that also waits for the redirected
+            // streams to reach EOF, so one surviving grandchild turns a command that
+            // finished in milliseconds into a timeout at the full wall-clock bound.
+            await exited.Task.WaitAsync(linked.Token).ConfigureAwait(false);
 
-            // WaitForExitAsync can return before the OutputDataReceived/ErrorDataReceived
-            // events for the process's final output have fired. The parameterless
-            // synchronous WaitForExit() blocks until redirected-stream processing is
-            // drained; the process has already exited, so this returns as soon as the
-            // readers finish.
-            process.WaitForExit();
+            // The process is gone and its own output is already in the pipe, but the
+            // reader events for the last of it may not have fired yet. Drain, bounded:
+            // in the normal case every writer has closed and this returns at once, and
+            // when one has not, the tail of a command that already exited is not worth
+            // hanging the harness for.
+            await DrainAsync().ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -132,16 +172,7 @@ public sealed class Runner(string workingDirectory, TimeSpan timeout, TextWriter
             // but keep the wait BOUNDED: a descendant could still be holding the pipe
             // open, and this is the one path that exists for when things have already
             // gone wrong.
-            try
-            {
-                await Task.Run(process.WaitForExit).WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None)
-                    .ConfigureAwait(false);
-            }
-            catch (TimeoutException)
-            {
-                // The tree kill was already issued; a descendant is still holding the
-                // pipe open. Return what was captured rather than hanging the harness.
-            }
+            await DrainAsync().ConfigureAwait(false);
 
             if (ct.IsCancellationRequested) throw;
             timedOut = true;

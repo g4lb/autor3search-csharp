@@ -116,6 +116,32 @@ public class RunnerTests
         }
     }
 
+    // `dotnet build` does exactly this: it leaves persistent MSBuild worker nodes and
+    // the Roslyn compiler server running by design, and they inherit the redirected
+    // stdout and stderr handles. A pipe reaches EOF only when the LAST writer closes
+    // it, so a wait keyed on EOF rather than on process exit reports a timeout for a
+    // command that finished in milliseconds — which is how a gate test that expected
+    // baseline_tampered got Crash/timeout after a build that took 1.32 seconds.
+    /// <summary>A child that has exited is reported immediately, even while a grandchild still holds the output pipe open.</summary>
+    [Fact]
+    public async Task AnExitedChildIsNotReportedAsTimedOutWhileAGrandchildHoldsThePipe()
+    {
+        var script = OperatingSystem.IsWindows()
+            ? "start /b cmd /c \"ping -n 30 127.0.0.1 > nul\" & echo done"
+            : "( sleep 25 ) & echo done";
+
+        var start = DateTime.UtcNow;
+        var r = await NewRunner(TimeSpan.FromSeconds(6))
+            .RunAsync(Shell, ShellArgs(script), CancellationToken.None);
+        var elapsed = DateTime.UtcNow - start;
+
+        Assert.False(r.TimedOut,
+            $"reported a timeout for a command that exited immediately (elapsed {elapsed})");
+        Assert.Equal(0, r.ExitCode);
+        Assert.Contains("done", r.Stdout);
+        Assert.True(elapsed < TimeSpan.FromSeconds(6), $"blocked on the grandchild for {elapsed}");
+    }
+
     /// <summary>The child process runs in the configured working directory.</summary>
     [Fact]
     public async Task TheWorkingDirectoryIsHonoured()
