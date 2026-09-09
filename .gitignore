@@ -13,5 +13,10 @@ artifacts/
 nupkg/
 *.user
 
+# Test result files. CI asks for a trx logger to read the suite's test count from;
+# running that same command locally would otherwise leave committable artifacts.
+TestResults/
+*.trx
+
 # SDD controller workspace (scratch)
 .superpowers/

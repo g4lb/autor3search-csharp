@@ -28,7 +28,35 @@ jobs:
       - name: Build
         run: dotnet build -c Release --no-restore
       - name: Test
-        run: dotnet test -c Release --no-build --verbosity normal
+        run: dotnet test -c Release --no-build --verbosity normal --logger "trx;LogFileName=results.trx"
+
+      # The README states a test count, and a count in prose drifts the moment a test
+      # is added -- it already shipped stale once. Read from the trx the run just
+      # produced rather than re-running anything, on one platform because the number
+      # is the same on all three. A trx logger is used instead of piping the Test step
+      # through tee so the Windows leg keeps running under its default shell.
+      - name: README test count is current
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          total=$(find . -name results.trx -print0 \
+            | xargs -0 grep -ho 'total="[0-9]*"' \
+            | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+          claimed=$(grep -oE '^[0-9]+ tests, none skipped' README.md | grep -oE '^[0-9]+' || true)
+          echo "suite=$total readme=${claimed:-<none>}"
+          if [ -z "$claimed" ]; then
+            echo "could not find the 'N tests, none skipped' claim in README.md" >&2
+            exit 1
+          fi
+          if [ "$total" -eq 0 ]; then
+            echo "parsed zero tests from the trx files -- the parse, not the suite, is wrong" >&2
+            exit 1
+          fi
+          if [ "$total" -ne "$claimed" ]; then
+            echo "README claims $claimed tests, the suite has $total" >&2
+            exit 1
+          fi
 
   # Installs the PUBLISHED package from nuget.org and drives it on all three
   # platforms. The build job above compiles and tests source, which is a different
