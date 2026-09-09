@@ -12,10 +12,8 @@ it through a frozen measurement harness, and the harness decides: **KEEP** or
 **DISCARD**. You wake up to a log of experiments and faster code.
 
 Inspired by [karpathy/autoresearch](https://github.com/karpathy/autoresearch), which does
-this for a single-GPU LLM training loop, by way of
-[autor3search-go](https://github.com/g4lb/autor3search-go). This does it for .NET — where
-the metric comes from BenchmarkDotNet instead of `go test -bench`, and where
-**correctness is not optional**.
+this for a single-GPU LLM training loop. This does it for .NET — where the metric comes
+from BenchmarkDotNet, and where **correctness is not optional**.
 
 > **Status: early but working.** The [worked example](#worked-example) below is a real
 > run: a quadratic string concatenation replaced with a `StringBuilder`, measured at
@@ -28,9 +26,8 @@ the metric comes from BenchmarkDotNet instead of `go test -bench`, and where
 > line. So `#` appears only in prose; every command, path and identifier here uses
 > `autor3search-csharp`.
 >
-> The measurement discipline, anti-cheat gates and scoring rule are carried over from the
-> Go original unchanged. Where the .NET toolchain forces a real difference,
-> [Limitations](#limitations) says so.
+> Where the .NET toolchain constrains what the harness can do, [Limitations](#limitations)
+> says so plainly rather than leaving you to find out.
 ---
 
 ## Start here
@@ -262,15 +259,15 @@ There are three ways to end a run.
 `autor3search-csharp stop -clear` cancels a pending stop. The force marker is sticky: it
 aborts every later eval on that tag until cleared.
 
-**All three behave identically on macOS, Linux and Windows**, and that is a deliberate
-improvement on the Go original. `stop` and `stop -force` write marker files into the run's
-state directory rather than sending signals. The running `eval` polls the force marker
-every 500 ms and cancels its own token when it appears, and that cancellation is what tears
-the benchmark process tree down cleanly; the graceful marker is read once the experiment
-completes, and reported in the verdict. Windows offers no process-to-process `SIGTERM`, so
-the Go tool's `stop -force` there ends `eval` outright and it never gets to record what it
-abandoned. Nothing is signalled between processes here, so there is no asymmetry to
-document.
+**All three behave identically on macOS, Linux and Windows**, by design. `stop` and
+`stop -force` write marker files into the run's state directory rather than sending
+signals. The running `eval` polls the force marker every 500 ms and cancels its own token
+when it appears, and that cancellation is what tears the benchmark process tree down
+cleanly; the graceful marker is read once the experiment completes, and reported in the
+verdict. A signal-based design could not behave the same way everywhere — Windows offers
+no process-to-process `SIGTERM`, so a forced stop there would end `eval` outright and it
+would never get to record what it abandoned. Nothing is signalled between processes here,
+so there is no platform asymmetry to document.
 
 ---
 
@@ -429,9 +426,9 @@ dependency surface and refused on the same grounds as `packages.lock.json`.
 
 **Freezing is by project, not by file.** C# has no filename convention for tests, so every
 `.cs` file in a test project — helpers and fixtures included — is frozen along with the
-assertions, and so is the whole benchmark project. This is coarser than the Go original's
-`_test.go` rule, and it is the deliberate trade: the guarantee that matters is that the
-agent cannot weaken an assertion or add an easier benchmark. `unfreeze` in the config
+assertions, and so is the whole benchmark project. Freezing more than strictly necessary
+is the deliberate trade: the guarantee that matters is that the agent cannot weaken an
+assertion or add an easier benchmark. `unfreeze` in the config
 exempts named files when a project genuinely mixes the two.
 
 **Symlinks are refused on all three platforms.** Reparse points and junctions on Windows
@@ -531,44 +528,48 @@ enough, rather than letting a run spend a night producing guaranteed discards.
 support reading the result at face value. That is the difference between a number and a
 fact.
 
-### Differences from the Go original
+### Constraints the .NET toolchain imposes
 
-These are specific to this port, and none of them is cosmetic.
+None of these is cosmetic, and none of them is going to change soon.
 
-**There is no `allocs/op`.** BenchmarkDotNet reports allocated *bytes* and Gen0/1/2
-collection counts, not an allocation count. In the Go tool, `allocs/op` is the first thing
-`program.md` points an agent at when choosing what to try next; here the guidance is
-rewritten around `B/op` and collection counts instead. That is a genuine downgrade in the
-quality of the agent's leads, not a rename.
+**There is no allocation count.** BenchmarkDotNet reports allocated *bytes* and Gen0/1/2
+collection counts; it does not report how many allocations happened. Bytes and collection
+counts are what `program.md` points an agent at when it is choosing what to try next. A
+count of allocations is often the sharper lead — "this loop allocates 400 times per call"
+localizes a problem that "this loop allocates 12 KB per call" does not — and it is simply
+not available.
 
-**This port has one fewer correctness gate.** The Go pipeline runs `go vet` between build
-and test. .NET has no safe analog: analyzers run inside the build, every repository
-configures their severity differently, and `dotnet build -warnaserror` against an arbitrary
-repository fails on pre-existing warnings that have nothing to do with the agent's change —
-which would turn a gate into noise. So it becomes `warnings_as_errors`, off by default and
-opt-in. That is a partial substitute, and only in repositories that are already
-warning-clean. Assume parity with the Go tool's correctness gating and you will be wrong.
+**Static analysis is not a separate gate.** The pipeline builds, then tests. There is no
+distinct analysis stage between the two, because .NET analyzers run inside the build,
+every repository configures their severity differently, and building an arbitrary
+repository with `-warnaserror` fails on pre-existing warnings that have nothing to do with
+the agent's change — a gate that fires on things the agent did not do is noise, not a
+gate. What exists instead is `warnings_as_errors`, off by default and opt-in, which is
+useful only in a repository that is already warning-clean. Correctness here rests on your
+tests, and rests on them entirely.
 
-**There is no race detector.** .NET ships nothing comparable to `go test -race`. It was
-dropped rather than faked with something weaker.
+**There is no race detector.** .NET ships nothing equivalent, and nothing weaker was
+substituted to fill the gap. If your optimization introduces a data race, the harness will
+not catch it; your tests are the only thing standing between that change and a KEEP.
 
 **An experiment is slow.** The KEEP above took roughly 8 minutes of wall clock at
 `job: short` and `count: 10` — 20 measured rounds plus a discarded warmup, on the machine
-described earlier. That is roughly an order of magnitude slower than the equivalent
-experiment under the Go tool, and it is dominated by BenchmarkDotNet generating and
-compiling a fresh project for every run. Acceptable for an unattended overnight loop;
-stated here rather than discovered at 2am. `in_process: true` in the config skips that
-generation and is much faster, at the cost of the process isolation BDN gives you by
-default. It is a config key rather than a CLI flag on purpose: it changes what the numbers
-mean, so it belongs in the file that is hashed at baseline, not in an argument the agent
-could pass on its own.
+described earlier. It is dominated by BenchmarkDotNet generating and compiling a fresh
+project for every run, which is also what makes its numbers trustworthy. Acceptable for an
+unattended overnight loop; stated here rather than discovered at 2am. `in_process: true`
+in the config skips that generation and is much faster, at the cost of the process
+isolation BenchmarkDotNet gives you by default. It is a config key rather than a CLI flag
+on purpose: it changes what the numbers mean, so it belongs in the file that is hashed at
+baseline, not in an argument the agent could pass on its own.
 
-**Freezing is coarser.** Whole test projects rather than individual test files, because C#
-has no filename convention for tests. See
+**Freezing is by project, not by file.** Whole test projects are frozen rather than
+individual test files, because C# has no filename convention that identifies a test. See
 [What the harness enforces](#what-the-harness-enforces).
 
-**A benchmark project must exist.** Go finds benchmarks in any `_test.go`; .NET needs a
-project with a `Main` that calls `BenchmarkSwitcher`. See below.
+**A benchmark project must exist.** .NET has no ambient benchmark discovery: benchmarks
+live in a project with a `Main` that calls `BenchmarkSwitcher`. A repository without one
+has nothing for the harness to measure, and `init` will say so rather than guess. See
+below.
 
 ---
 

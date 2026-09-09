@@ -179,10 +179,10 @@ public sealed class EvalCommandIntegrationTests : IDisposable
     // A high min_effect_pct here, deliberately, not a retry or a loosened assertion.
     // dotnet test runs Core.Tests and Cli.Tests as parallel processes, and a no-op
     // measured while the OTHER assembly's suite loads the machine can land several
-    // percent from zero with a convincing p-value and spuriously KEEP — this is real
-    // and documented, not hypothetical: the Go sibling's README records catching
-    // exactly this, -2.8% at p=0.004, "while an unrelated build was running". A no-op
-    // asserting DISCARD must not depend on the machine being quiet, so the fix is to
+    // percent from zero with a convincing p-value and spuriously KEEP — this is real,
+    // not hypothetical: a no-op has been measured at several percent with a p-value
+    // well under 0.05 purely because an unrelated build was running at the time. A
+    // no-op asserting DISCARD must not depend on the machine being quiet, so the fix is to
     // raise the bar noise cannot clear rather than to hope the machine stays idle. The
     // assertion below still genuinely tests that a no-op change is discarded.
     /// <summary>A comment-only change carries no measurable improvement and is discarded.</summary>
@@ -236,8 +236,8 @@ public sealed class EvalCommandIntegrationTests : IDisposable
 
     // Same exposure and same reasoning as ANoOpCommentChangeIsDiscarded above: a no-op
     // measured on a machine loaded by the parallel Core.Tests process can spuriously
-    // KEEP and advance MeasureCommit on noise alone (the Go sibling's README documents
-    // this exact phenomenon). A high min_effect_pct removes the dependence on the
+    // KEEP and advance MeasureCommit on noise alone. A high min_effect_pct removes the
+    // dependence on the
     // machine being quiet; the assertion below still genuinely tests that a DISCARD
     // leaves MeasureCommit untouched.
     /// <summary>A DISCARD leaves the measurement baseline exactly where it was.</summary>

@@ -63,13 +63,13 @@ starting the next.
 
 ## Idea bank
 
-Allocation is the usual lead. `B/op` and the Gen0/Gen1 collection counts in the verdict
-tell you where to look — a change that removes allocations very often removes time with
-them.
+Allocation is the usual lead. The allocated bytes and the Gen0/Gen1 collection counts in
+the verdict tell you where to look — a change that removes allocations very often removes
+time with them.
 
-**Note:** unlike the Go sibling of this tool, there is no `allocs/op` count here.
-BenchmarkDotNet reports allocated *bytes* and GC collection counts, not an allocation
-count, so reason about `B/op` and Gen0 collections instead.
+**Note:** there is no count of allocations available, only their size. BenchmarkDotNet
+reports allocated *bytes* and GC collection counts, never how many allocations occurred,
+so reason about bytes per operation and Gen0 collections instead.
 
 Ideas, roughly in order of how often they pay:
 

@@ -32,8 +32,11 @@ public sealed record PipelineOptions(
 /// reading results.tsv uses it to see WHY something got faster. Keep that boundary —
 /// scoring Bytes would let allocation-only changes with no latency win pass as KEEP.
 /// </summary>
-/// <param name="Time">Per-benchmark ns/op deltas. Scored.</param>
-/// <param name="Bytes">Per-benchmark B/op deltas. Informational, and null when unavailable.</param>
+/// <param name="Time">Per-benchmark nanoseconds-per-operation deltas. Scored.</param>
+/// <param name="Bytes">
+/// Per-benchmark allocated-bytes-per-operation deltas. Informational, and null when
+/// unavailable.
+/// </param>
 public sealed record Measurements(IReadOnlyList<Delta> Time, IReadOnlyList<Delta>? Bytes);
 
 /// <summary>The result of one evaluation.</summary>
@@ -165,10 +168,10 @@ public static class Pipeline
         //     to subdirectories reached by recursion, never to the root path it is handed.
         //     There is no way to hide a frozen file from a walk that starts exactly where
         //     the file provably still is. It becomes a live gate again the moment
-        //     FrozenFiles' contract changes to a root walk applying those skip rules to the
-        //     whole path — which is exactly what the Go tool this ports from does. Kept
-        //     deliberately as defence-in-depth against that contract changing underneath
-        //     it, not left behind by accident.
+        //     FrozenFiles' contract changes to a root walk that applies those skip rules to
+        //     the whole path, which is a plausible future refactor. Kept deliberately as
+        //     defence-in-depth against that contract changing underneath it, not left
+        //     behind by accident.
         var frozenProjects = o.Baseline.FrozenProjects;
         var present = new HashSet<string>(
             Discoverer.FrozenFiles(o.Root, frozenProjects, o.Config.Unfreeze), StringComparer.Ordinal);

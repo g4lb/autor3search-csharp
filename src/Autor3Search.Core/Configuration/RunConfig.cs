@@ -73,14 +73,16 @@ public sealed class RunConfig
     [YamlMember(Alias = "min_effect_pct")]
     public double MinEffectPct { get; set; }
 
-    /// <summary>Bounds each subprocess phase. Go-style duration, e.g. "15m".</summary>
+    /// <summary>Bounds each subprocess phase. A unit-suffixed duration, e.g. "15m".</summary>
     [YamlMember(Alias = "timeout")]
     public string Timeout { get; set; } = "15m";
 
     /// <summary>
-    /// Builds the optimized repository with warnings as errors. The partial analog of
-    /// `go vet`, off by default because arbitrary repositories carry pre-existing
-    /// warnings that have nothing to do with the agent's change.
+    /// Builds the optimized repository with warnings as errors. This is the only static
+    /// analysis the pipeline can offer -- .NET analyzers run inside the build, so there is
+    /// no separate analysis stage to gate on. Off by default because arbitrary
+    /// repositories carry pre-existing warnings that have nothing to do with the agent's
+    /// change, and a gate that fires on those is noise rather than a gate.
     /// </summary>
     [YamlMember(Alias = "warnings_as_errors")]
     public bool WarningsAsErrors { get; set; }
@@ -221,18 +223,19 @@ public sealed class RunConfig
         _ = TimeoutDuration;
     }
 
-    /// <summary>Parses <see cref="Timeout"/> as a Go-style duration.</summary>
+    /// <summary>Parses <see cref="Timeout"/> as a unit-suffixed duration.</summary>
     public TimeSpan TimeoutDuration => ParseDuration(Timeout);
 
     private static readonly Regex DurationPart =
         new(@"(?<value>\d+(?:\.\d+)?)(?<unit>ms|s|m|h)", RegexOptions.Compiled);
 
     /// <summary>
-    /// Parses a Go-style duration such as "15m", "90s" or "2h30m".
+    /// Parses a suffixed duration such as "15m", "90s" or "2h30m".
     ///
-    /// Deliberately not TimeSpan.Parse, whose "15" means fifteen DAYS. Config files
-    /// are shared between this tool and its Go sibling, and a timeout that silently
-    /// meant days rather than minutes would hang an unattended overnight run.
+    /// Deliberately not TimeSpan.Parse, whose "15" means fifteen DAYS. A bare number in
+    /// a config file reads as minutes to almost everyone who writes one, and a timeout
+    /// that silently meant days instead would hang an unattended overnight run rather
+    /// than ending it. Requiring an explicit unit removes the ambiguity entirely.
     /// </summary>
     public static TimeSpan ParseDuration(string text)
     {

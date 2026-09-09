@@ -10,8 +10,8 @@ public readonly record struct Observation(string FullName, double MeanNs, long B
 public static class Units
 {
     /// <summary>Nanoseconds per operation. The only unit that is scored.</summary>
-    public const string TimeNs = "ns/op";
+    public const string TimeNs = "time_ns";
 
     /// <summary>Allocated bytes per operation. Reported as a hint only.</summary>
-    public const string BytesPerOp = "B/op";
+    public const string BytesPerOp = "alloc_bytes";
 }

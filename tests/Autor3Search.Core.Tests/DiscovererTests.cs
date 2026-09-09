@@ -264,8 +264,8 @@ public sealed class DiscovererTests : IDisposable
     // fixed path here — the dot/underscore skip rules in EnumerateFiles apply only to
     // subdirectories reached by recursion, never to the root path passed in. So a
     // frozen file can never be hidden from the walk that finds it. If FrozenFiles is
-    // ever changed to walk the repository root itself (applying skip rules along the
-    // whole path, as the Go tool this ports from does), this test fails loudly and
+    // ever changed to walk the repository root itself, applying skip rules along the
+    // whole path, this test fails loudly and
     // points straight at the MissingFrozenFile check in Pipeline.EvalAsync, which then
     // starts mattering.
     /// <summary>FrozenFiles enumerates from the given project path regardless of dot- or underscore-prefixed ancestors.</summary>

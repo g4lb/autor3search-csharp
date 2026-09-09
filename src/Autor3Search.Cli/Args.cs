@@ -4,8 +4,9 @@ namespace Autor3Search.Cli;
 /// A minimal flag parser.
 ///
 /// Hand-rolled on purpose: System.CommandLine is still prerelease, and this tool ships
-/// to users who install it with `dotnet tool install -g`. The Go original uses stdlib
-/// `flag` for the same reason.
+/// to users who install it with `dotnet tool install -g` -- taking a prerelease
+/// dependency into a globally installed tool buys a parser and sells the ability to
+/// promise a stable install.
 ///
 /// Accepts <c>-name value</c>, <c>--name value</c>, <c>-name=value</c> and
 /// <c>--name=value</c>. Flag names are case-sensitive, so <c>-C</c> (the directory

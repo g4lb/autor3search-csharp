@@ -120,7 +120,8 @@ public sealed class MeasurerIntegrationTests : IDisposable
         // optimization: the StringBuilder path allocates roughly half what the
         // quadratic-string-concatenation path does, independent of scheduling jitter.
         Assert.True(candBytes < baseBytes * 0.9,
-            $"expected the optimized candidate to allocate meaningfully less: base {baseBytes:F0}B/op, cand {candBytes:F0}B/op");
+            $"expected the optimized candidate to allocate meaningfully less: " +
+            $"base {baseBytes:F0} bytes/op, cand {candBytes:F0} bytes/op");
     }
 
     /// <summary>A filter that matches no benchmark fails loudly instead of silently returning nothing.</summary>

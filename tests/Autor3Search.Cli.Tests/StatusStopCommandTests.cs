@@ -168,9 +168,10 @@ public sealed class StatusStopCommandTests : IDisposable
         Assert.Contains("abandon", output, StringComparison.OrdinalIgnoreCase);
     }
 
-    // The Go original ends eval outright on Windows because it has no SIGTERM to send.
-    // This port polls a marker instead, so the message is the same everywhere and
-    // there is no platform caveat to explain.
+    // A signal-based stop would have to behave differently on Windows, which has no
+    // process-to-process SIGTERM: a forced stop there would end eval outright, before it
+    // could record what it abandoned. Polling a marker file instead makes the message the
+    // same everywhere, so there is no platform caveat to explain.
     /// <summary>stop -force says the same thing on every platform, with no Windows caveat.</summary>
     [Fact]
     public void StopForceSaysTheSameThingOnEveryPlatform()

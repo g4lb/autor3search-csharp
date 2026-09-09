@@ -253,7 +253,7 @@ public class RunConfigTests
         Assert.Contains("benchmark_project", ex.Message);
     }
 
-    /// <summary>TimeoutDuration parses Go-style duration strings, not TimeSpan.Parse's day-first form.</summary>
+    /// <summary>TimeoutDuration parses unit-suffixed durations, not TimeSpan.Parse's day-first form.</summary>
     [Theory]
     [InlineData("15m", 15)]
     [InlineData("1h", 60)]
