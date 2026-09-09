@@ -35,13 +35,75 @@ the metric comes from BenchmarkDotNet instead of `go test -bench`, and where
 
 ## Start here
 
-Install the tool, then hand this to your agent.
+Open your coding agent inside the .NET repository you want to make faster, and paste
+this:
 
-```bash
-dotnet tool install -g autor3search-csharp
+```text
+Install and run autor3search-csharp on this repository, then optimize it.
+
+Setup:
+1. dotnet tool install -g autor3search-csharp
+   Make sure ~/.dotnet/tools is on PATH (on Windows, %USERPROFILE%\.dotnet\tools).
+   If the tool installs but then exits with "You must install .NET to run this
+   application", see "If the tool will not start" in the README and tell me.
+2. autor3search-csharp init
+   Show me the benchmarks it discovered. If it reports none, STOP and tell me:
+   this tool can only optimize what it can measure.
+3. git add -A && git commit -m "autor3search-csharp init"
+4. autor3search-csharp doctor
+   Show me any warnings. If the machine looks unfit to measure, stop and ask me
+   before continuing.
+5. autor3search-csharp baseline -tag <today, e.g. sep9>
+   This pins a second worktree and builds it, so build time and disk use both
+   roughly double. That is expected.
+
+Then:
+6. Read program.md in this repository, in full. It is your instruction set for
+   the rest of this run. Follow it exactly.
+
+Rules for the whole run:
+- Never edit program.md, .autor3search/config.yaml, results.tsv, run.log, or any
+  test or benchmark project. They are not yours. Test and benchmark files are
+  restored from frozen hashes before every eval, so editing them does not fail
+  loudly -- it is silently undone, and costs you the experiment.
+- Never pass -force to any autor3search-csharp command. (I may run
+  `autor3search-csharp stop -force` myself; that one is mine, not yours.)
+- One idea per experiment. Commit before each eval.
+- KEEP means the commit stays. Anything else (DISCARD, FAIL, CRASH) means
+  git reset --hard HEAD~1.
+- Print one context line before each experiment, so I can see where you are:
+  [exp <n> | <branch> | vs <measure_commit> | stop: autor3search-csharp stop]
+
+Run the loop until I stop you. I stop you by running `autor3search-csharp stop` in
+my own terminal -- you will see it as "stop_requested": true in a verdict. When
+you do: apply that verdict, do not start another experiment, run
+`autor3search-csharp report`, summarize what you tried, and exit the loop.
 ```
 
-If `autor3search-csharp` is then "command not found", `~/.dotnet/tools` is not on your
+That's the whole handoff. The agent installs the tool, sets the run up, and then
+follows `program.md` -- which `init` generated for your repository, with your
+discovered benchmarks filled in. It names the benchmarks in scope, spells out the
+KEEP/DISCARD/FAIL/CRASH contract, and lists everything the agent must never touch.
+You do not have to write those instructions.
+
+What you get back: one commit per accepted change on a branch named
+`autor3search-csharp/<tag>`, and a `results.tsv` recording every experiment that was
+tried, including the ones that failed. `autor3search-csharp report` summarizes it.
+
+Two things worth knowing before you start it:
+
+- **It needs benchmarks.** The tool optimizes what it can measure, and refuses to
+  guess: `init` will not write a config for a repository with no `[Benchmark]`
+  methods. See [Repositories with no benchmarks](#repositories-with-no-benchmarks).
+- **Numbers are only as good as the machine.** Run `doctor` and read it. A laptop on
+  battery, a busy CPU or a running debugger all widen the noise the harness has to
+  see through, and it will tell you so rather than quietly returning worse verdicts.
+
+### If the tool will not start
+
+Two failures are common enough to name, and neither is specific to this tool.
+
+If `autor3search-csharp` is "command not found", `~/.dotnet/tools` is not on your
 `PATH`. It was not on this machine's `PATH` by default. Add it:
 
 ```bash
@@ -53,7 +115,7 @@ setx PATH "%PATH%;%USERPROFILE%\.dotnet\tools" # Windows
 If it is instead found but exits with `You must install .NET to run this
 application`, .NET is installed somewhere the tool's launcher does not look. Homebrew
 puts it under `/opt/homebrew`, and a global tool's launcher only searches
-`/usr/local/share/dotnet`, `DOTNET_ROOT` and `/etc/dotnet/install_location*` — so the
+`/usr/local/share/dotnet`, `DOTNET_ROOT` and `/etc/dotnet/install_location*` -- so the
 `dotnet` command works while every global tool fails. Point `DOTNET_ROOT` at it:
 
 ```bash
@@ -62,32 +124,10 @@ export DOTNET_ROOT="$(dotnet --list-runtimes | grep -m1 Microsoft.NETCore.App \
 ```
 
 It is derived from `--list-runtimes` rather than from the path of the `dotnet` binary
-because those are not the same place: Homebrew keeps the binary in `bin/` and the runtime
-in the sibling `libexec/`, so walking up from the executable lands one directory too high.
-
-This affects every .NET global tool, not this one. The official .NET installer puts the
-runtime where the launcher looks and needs none of this.
-
-Then, in the repository you want made faster:
-
-```
-Install and set up the optimization harness in this repository:
-
-  dotnet tool install -g autor3search-csharp
-  autor3search-csharp init
-  git add -A && git commit -m "autor3search-csharp init"
-  autor3search-csharp doctor
-  autor3search-csharp baseline -tag <today's date>
-
-Then read program.md, which init wrote at the repository root, and follow the loop
-it describes until it tells you to stop. Run one experiment at a time. Commit before
-every eval. Do not edit program.md, .autor3search/config.yaml, results.tsv or
-run.log, and never pass -force to any command.
-```
-
-`init` writes `program.md` itself, with your repository's discovered benchmarks filled
-in. It tells the agent what it may edit, how to read a verdict, and what to do with each
-of the four outcomes. You do not have to write those instructions.
+because those are not the same place: Homebrew keeps the binary in `bin/` and the
+runtime in the sibling `libexec/`, so walking up from the executable lands one
+directory too high. This affects every .NET global tool, not this one. The official
+.NET installer puts the runtime where the launcher looks and needs none of this.
 
 ### Or build it from source
 

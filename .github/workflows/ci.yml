@@ -30,6 +30,84 @@ jobs:
       - name: Test
         run: dotnet test -c Release --no-build --verbosity normal
 
+  # Installs the PUBLISHED package from nuget.org and drives it on all three
+  # platforms. The build job above compiles and tests source, which is a different
+  # claim: it never installs what it ships. Both defects found after v0.1.0 -- a
+  # binary stamped +local, and a tool that would not launch at all where the runtime
+  # sits outside the launcher's search path -- were invisible to it for that reason.
+  # This job fails if the thing a user actually installs does not run.
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install the published tool from nuget.org
+        run: |
+          set -euo pipefail
+          dotnet tool install -g autor3search-csharp
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: It runs at all
+        run: |
+          set -euo pipefail
+          autor3search-csharp version
+          # No arguments is a usage error and exits 2 by design, so the invocation
+          # cannot sit in the pipeline under `set -e` -- capture first, then match.
+          usage="$(autor3search-csharp 2>&1 || true)"
+          echo "$usage" | grep -q 'usage: autor3search-csharp'
+
+      - name: doctor exits 0 even when it has warnings
+        run: |
+          set -uo pipefail
+          # The exit-0 contract is load-bearing: an agent loop reads doctor's text,
+          # never its status, so a non-zero exit would halt runs on a machine that is
+          # merely noisy rather than unusable. `set -e` is deliberately off here: it
+          # would abort before the check and make any failure look like a crash, and
+          # $? after a command `set -e` already guaranteed to succeed can only be 0 --
+          # an assertion that cannot fail is not one.
+          autor3search-csharp doctor
+          code=$?
+          echo "doctor exit: $code"
+          test "$code" -eq 0
+
+      - name: init, baseline and status on a real repository
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          cp -R testdata/demo "$work/demo"
+          cd "$work/demo"
+          git init -q .
+          git config user.email smoke@example.com
+          git config user.name  "smoke test"
+          git add -A
+          git commit -q -m "demo fixture"
+
+          # init must discover the fixture's [Benchmark] methods. It refuses to write
+          # a config when it finds none, so a silent discovery regression fails here
+          # rather than producing a harness that measures nothing.
+          autor3search-csharp init
+          test -f .autor3search/config.yaml
+          test -f program.md
+          git add -A
+          git commit -q -m "autor3search-csharp init"
+
+          # baseline exercises the parts most likely to differ per platform: the
+          # out-of-tree state directory, freezing files by hash, and pinning a
+          # detached worktree.
+          autor3search-csharp baseline -tag smoke
+          autor3search-csharp status
+          git rev-parse --verify autor3search-csharp/smoke
+
   release:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
