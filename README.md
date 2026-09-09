@@ -135,7 +135,7 @@ dotnet build -c Release
 dotnet test -c Release
 ```
 
-305 tests, none skipped, no warnings. CI runs the full suite on `ubuntu-latest`,
+306 tests, none skipped, no warnings. CI runs the full suite on `ubuntu-latest`,
 `macos-latest` and `windows-latest`, and a failure on any one of them is a failure. The
 integration and end-to-end tests drive real builds and real benchmarks, which is the point
 of them and also why the suite is not quick.

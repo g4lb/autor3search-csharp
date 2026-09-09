@@ -29,12 +29,25 @@ internal sealed class GateHarness : IDisposable
     private string _repo;
     private readonly StateStore _store;
 
+    // Runner mirrors every child process's output into the pipeline log, so this is
+    // where a `dotnet build` or `dotnet test` failure explains itself. Passing null
+    // discarded it, which is why a gate test failing on an earlier stage than the one
+    // under test left nothing to diagnose. Synchronized because the pipeline writes to
+    // it from the reader threads draining stdout and stderr.
+    // Read through _logBuffer, not _log: TextWriter.Synchronized wraps the writer in a
+    // type that does not forward ToString() to it, so calling ToString() on the wrapper
+    // yields its type name rather than the captured text.
+    private readonly StringWriter _logBuffer = new();
+    private readonly TextWriter _log;
+
     /// <summary>Absolute path to the run configuration written for this repository.</summary>
     public string ConfigPath { get; }
 
     /// <summary>Builds the repository, writes and commits the config, and takes the baseline.</summary>
     public GateHarness()
     {
+        _log = TextWriter.Synchronized(_logBuffer);
+
         _previousStateHome = Environment.GetEnvironmentVariable(Paths.StateHomeEnvVar);
         _stateHome = Path.Combine(Path.GetTempPath(), $"a3s-gatestate-{Guid.NewGuid():N}");
         Environment.SetEnvironmentVariable(Paths.StateHomeEnvVar, _stateHome);
@@ -107,8 +120,21 @@ internal sealed class GateHarness : IDisposable
         var config = RunConfig.Load(ConfigPath);
         var baseline = _store.LoadBaseline();
 
-        var options = new PipelineOptions(_repo, _store, config, baseline, Log: null);
+        var options = new PipelineOptions(_repo, _store, config, baseline, Log: _log);
         return await Pipeline.EvalAsync(options, CancellationToken.None).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The tail of everything the pipeline logged, for failure diagnostics. Bounded
+    /// because a gate test that clears every gate runs a real measurement, and the
+    /// whole log is megabytes of build and BenchmarkDotNet output; the end is the part
+    /// that says why something failed.
+    /// </summary>
+    public string LogTail(int chars = 4000)
+    {
+        string text;
+        lock (_logBuffer) text = _logBuffer.ToString();
+        return text.Length <= chars ? text : string.Concat("...", text.AsSpan(text.Length - chars));
     }
 
     /// <summary>Reads a repo-relative file as text.</summary>

@@ -26,11 +26,12 @@ public sealed class PipelineGateTests : IDisposable
     // which is precisely the message needed to tell a real regression apart from
     // infrastructure noise. Assert both fields together and carry the message into
     // the failure, so an intermittent failure stays diagnosable from a CI log alone.
-    private static void AssertGate(EvalOutcome outcome, VerdictStatus status, string reason)
+    private void AssertGate(EvalOutcome outcome, VerdictStatus status, string reason)
     {
         var v = outcome.Verdict;
         Assert.True(v.Status == status && v.Reason == reason,
-            $"expected {status}/{reason} but got {v.Status}/{v.Reason}: {v.Message}");
+            $"expected {status}/{reason} but got {v.Status}/{v.Reason}: {v.Message}" +
+            $"{Environment.NewLine}--- pipeline log (tail) ---{Environment.NewLine}{_h.LogTail()}");
     }
 
     /// <summary>An edit outside the configured scope fails with Reasons.Scope.</summary>
