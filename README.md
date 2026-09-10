@@ -1,8 +1,8 @@
 # autor3search-c#
 
 [![ci](https://github.com/autor3search/csharp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/autor3search/csharp/actions/workflows/ci.yml?query=branch%3Amain)
-[![nuget](https://img.shields.io/nuget/v/autor3search-csharp?label=nuget)](https://www.nuget.org/packages/autor3search-csharp)
-[![downloads](https://img.shields.io/nuget/dt/autor3search-csharp?label=downloads)](https://www.nuget.org/packages/autor3search-csharp)
+[![nuget](https://img.shields.io/nuget/v/Autor3Search?label=nuget)](https://www.nuget.org/packages/Autor3Search)
+[![downloads](https://img.shields.io/nuget/dt/Autor3Search?label=downloads)](https://www.nuget.org/packages/Autor3Search)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 **Autonomous AI-driven performance optimization for any .NET repository.**
@@ -39,7 +39,7 @@ this:
 Install and run autor3search-csharp on this repository, then optimize it.
 
 Setup:
-1. dotnet tool install -g autor3search-csharp
+1. dotnet tool install -g Autor3Search
    Make sure ~/.dotnet/tools is on PATH (on Windows, %USERPROFILE%\.dotnet\tools).
    If the tool installs but then exits with "You must install .NET to run this
    application", see "If the tool will not start" in the README and tell me.

@@ -11,7 +11,7 @@
     <Nullable>enable</Nullable>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>autor3search-csharp</ToolCommandName>
-    <PackageId>autor3search-csharp</PackageId>
+    <PackageId>Autor3Search</PackageId>
     <PackageOutputPath>./nupkg</PackageOutputPath>
     <Description>Autonomous AI-driven performance optimization for any .NET repository.</Description>
     <PackageProjectUrl>https://github.com/autor3search/csharp</PackageProjectUrl>
