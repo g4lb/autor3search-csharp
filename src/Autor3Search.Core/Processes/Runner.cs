@@ -115,6 +115,17 @@ public sealed class Runner(string workingDirectory, TimeSpan timeout, TextWriter
         // case costs milliseconds rather than the whole cap.
         async Task DrainAsync()
         {
+            // Restart the quiet window here. It is seeded when RunAsync begins, which
+            // makes it measure "silence since the run started" rather than "silence
+            // since we started waiting for the tail". For a child that took longer
+            // than the window to spawn and speak, the very first check below already
+            // sees more than the window's worth of silence and returns immediately —
+            // before the reader events for output that IS in the pipe have fired,
+            // yielding empty stdout and stderr. CI hit this on macOS and Windows in
+            // two different tests, both asserting on output that came back "".
+            // Reseeding makes the window mean what it says.
+            Interlocked.Exchange(ref lastOutputTicks, DateTime.UtcNow.Ticks);
+
             var drain = Task.Run(process.WaitForExit);
 
             // The process object is disposed on the way out from under a drain that

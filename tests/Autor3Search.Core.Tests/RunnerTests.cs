@@ -173,6 +173,25 @@ public class RunnerTests
         Assert.Contains("present", r.Stdout);
     }
 
+    /// <summary>
+    /// A child that stays silent for longer than the drain's 500ms quiet window still
+    /// has its output captured. This does NOT deterministically reproduce the CI
+    /// failure it was written for — that needed a slow process spawn racing the reader
+    /// events, which passes here on any machine fast enough to fire them promptly. It
+    /// is kept as the closest cheap guard on the path that broke.
+    /// </summary>
+    [Fact]
+    public async Task OutputArrivingAfterTheQuietWindowIsStillCaptured()
+    {
+        var script = OperatingSystem.IsWindows()
+            ? "ping -n 3 127.0.0.1 >nul & echo late-line"
+            : "sleep 1.5; echo late-line";
+
+        var r = await NewRunner().RunAsync(Shell, ShellArgs(script), CancellationToken.None);
+
+        Assert.Contains("late-line", r.Stdout);
+    }
+
     /// <summary>When a log writer is supplied, child output is mirrored to it.</summary>
     [Fact]
     public async Task OutputIsMirroredToTheLogWhenOneIsGiven()
