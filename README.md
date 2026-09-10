@@ -1,6 +1,6 @@
 # autor3search-c#
 
-[![ci](https://github.com/g4lb/autor3search-csharp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/g4lb/autor3search-csharp/actions/workflows/ci.yml?query=branch%3Amain)
+[![ci](https://github.com/autor3search/csharp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/autor3search/csharp/actions/workflows/ci.yml?query=branch%3Amain)
 [![nuget](https://img.shields.io/nuget/v/autor3search-csharp?label=nuget)](https://www.nuget.org/packages/autor3search-csharp)
 [![downloads](https://img.shields.io/nuget/dt/autor3search-csharp?label=downloads)](https://www.nuget.org/packages/autor3search-csharp)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -129,8 +129,8 @@ directory too high. This affects every .NET global tool, not this one. The offic
 ### Or build it from source
 
 ```bash
-git clone https://github.com/g4lb/autor3search-csharp
-cd autor3search-csharp
+git clone https://github.com/autor3search/csharp
+cd csharp
 dotnet build -c Release
 dotnet test -c Release
 ```
