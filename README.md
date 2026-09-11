@@ -5,6 +5,8 @@
 [![downloads](https://img.shields.io/nuget/dt/Autor3Search?label=downloads)](https://www.nuget.org/packages/Autor3Search)
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
+[autoresearch for your codebase](https://autor3search.dev/) — the same loop in seven languages, with every agent prompt in one place.
+
 **Autonomous AI-driven performance optimization for any .NET repository.**
 
 Point your coding agent at your repo and go to sleep. It proposes an optimization, runs
