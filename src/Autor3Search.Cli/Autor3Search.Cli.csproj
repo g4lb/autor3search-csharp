@@ -14,8 +14,9 @@
     <PackageId>Autor3Search</PackageId>
     <PackageOutputPath>./nupkg</PackageOutputPath>
     <Description>Autonomous AI-driven performance optimization for any .NET repository.</Description>
-    <PackageProjectUrl>https://github.com/autor3search/csharp</PackageProjectUrl>
-    <PackageTags>benchmark;performance;optimization;benchmarkdotnet;agent;ai;cli;dotnet-tool</PackageTags>
+    <PackageProjectUrl>https://autor3search.dev</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/autor3search/csharp</RepositoryUrl>
+    <PackageTags>autoresearch;benchmark;performance;optimization;benchmarkdotnet;agent;ai;cli;dotnet-tool</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
